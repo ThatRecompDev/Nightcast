@@ -6,12 +6,14 @@ using System.Runtime.InteropServices.Marshalling;
 namespace Phantom.Relay.Media.Windows.Interop;
 
 /// <summary>
-/// ID3D11DeviceContext (d3d11.h), up to CopySubresourceRegion: the slots before it are declared in the header's order
-/// (ID3D11DeviceChild's four first) so the vtable lines up; only Map, Unmap and CopySubresourceRegion are called.
+/// ID3D11DeviceContext (d3d11.h), up to CSSetConstantBuffers: the slots are declared in the header's order
+/// (ID3D11DeviceChild's four first) so the vtable lines up. The decoder calls Map, Unmap and CopySubresourceRegion;
+/// the frame generation (Phantom.Relay.Lsfg) calls the compute-stage setters, Dispatch, the copies and the queries.
+/// Unused slots are declared without parameters.
 /// </summary>
 [GeneratedComInterface]
 [Guid("c0bfa96c-e089-44fb-8eaf-26f8796190da")]
-internal partial interface ID3D11DeviceContext
+internal unsafe partial interface ID3D11DeviceContext
 {
     void GetDevice();
 
@@ -63,11 +65,14 @@ internal partial interface ID3D11DeviceContext
 
     void VSSetSamplers();
 
-    void Begin();
+    [PreserveSig]
+    void Begin(nint asynchronous);
 
-    void End();
+    [PreserveSig]
+    void End(nint asynchronous);
 
-    void GetData();
+    [PreserveSig]
+    int GetData(nint asynchronous, void* data, uint size, uint flags);
 
     void SetPredication();
 
@@ -91,7 +96,8 @@ internal partial interface ID3D11DeviceContext
 
     void DrawInstancedIndirect();
 
-    void Dispatch();
+    [PreserveSig]
+    void Dispatch(uint groupsX, uint groupsY, uint groupsZ);
 
     void DispatchIndirect();
 
@@ -103,4 +109,61 @@ internal partial interface ID3D11DeviceContext
 
     [PreserveSig]
     void CopySubresourceRegion(nint destination, uint destinationSubresource, uint x, uint y, uint z, nint source, uint sourceSubresource, nint box);
+
+    [PreserveSig]
+    void CopyResource(nint destination, nint source);
+
+    [PreserveSig]
+    void UpdateSubresource(nint destination, uint subresource, nint box, void* data, uint rowPitch, uint depthPitch);
+
+    void CopyStructureCount();
+
+    void ClearRenderTargetView();
+
+    void ClearUnorderedAccessViewUint();
+
+    void ClearUnorderedAccessViewFloat();
+
+    void ClearDepthStencilView();
+
+    void GenerateMips();
+
+    void SetResourceMinLOD();
+
+    void GetResourceMinLOD();
+
+    void ResolveSubresource();
+
+    void ExecuteCommandList();
+
+    void HSSetShaderResources();
+
+    void HSSetShader();
+
+    void HSSetSamplers();
+
+    void HSSetConstantBuffers();
+
+    void DSSetShaderResources();
+
+    void DSSetShader();
+
+    void DSSetSamplers();
+
+    void DSSetConstantBuffers();
+
+    [PreserveSig]
+    void CSSetShaderResources(uint startSlot, uint count, nint* views);
+
+    [PreserveSig]
+    void CSSetUnorderedAccessViews(uint startSlot, uint count, nint* views, uint* initialCounts);
+
+    [PreserveSig]
+    void CSSetShader(nint shader, nint classInstances, uint classInstanceCount);
+
+    [PreserveSig]
+    void CSSetSamplers(uint startSlot, uint count, nint* samplers);
+
+    [PreserveSig]
+    void CSSetConstantBuffers(uint startSlot, uint count, nint* buffers);
 }

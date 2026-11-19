@@ -16,6 +16,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Phantom.Relay.Media.Windows.Tests" />
+    <!-- The frame generation runs on the decoder's D3D11 device and shares these COM definitions (one per mechanic). -->
+    <InternalsVisibleTo Include="Phantom.Relay.Lsfg" />
+    <InternalsVisibleTo Include="Phantom.Relay.Lsfg.Tests" />
   </ItemGroup>
 
 </Project>
