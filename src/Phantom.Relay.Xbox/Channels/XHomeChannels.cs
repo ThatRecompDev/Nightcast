@@ -57,6 +57,9 @@ public static class XHomeChannels
 
     public const string DimensionsTarget = "/streaming/characteristics/dimensionschanged";
 
+    /// <summary>The console's message naming the running game (seen live; its content's shape is not seen yet).</summary>
+    public const string TitleInfoTarget = "/streaming/properties/titleinfo";
+
     public const int SystemUiMajor = 0;
 
     public const int SystemUiMinor = 2;

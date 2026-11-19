@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Org.BouncyCastle.Tls;
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Sctp;
@@ -13,9 +14,10 @@ using Phantom.Relay.Xbox.Input;
 namespace Phantom.Relay.Stream.Channels;
 
 /// <summary>
-/// The console's data channels over the DTLS session: SCTP as the DTLS client, the four channels opened, and the
-/// console's opening exchange spoken on each as it opens (docs/architecture/xhome.md#data-channels). Pumped from the
-/// network loop's thread, like everything after the handshake.
+/// The console's data channels over the DTLS session: SCTP as the DTLS client, the four channels opened, the console's
+/// opening exchange spoken on each as it opens (docs/architecture/xhome.md#data-channels), the running title read from
+/// the message channel, and every pad state waiting in the <see cref="PadMailbox"/> written onto the input channel the
+/// moment the pump sees it. Pumped from the network loop's thread, like everything after the handshake.
 /// </summary>
 public sealed class ConsoleChannels
 {
@@ -28,25 +30,32 @@ public sealed class ConsoleChannels
     private readonly DtlsDatagramBridge _bridge;
     private readonly SctpAssociation _association;
     private readonly DataChannelHub _hub;
-    private readonly InputReportWriter _input;
+    private readonly InputReportWriter _reports;
+    private readonly PadMailbox _pads;
     private readonly IRandomSource _random;
     private readonly byte[] _record;
     private readonly byte[] _report = new byte[InputReportWriter.GamepadReportSize];
+    private readonly bool[] _announced = new bool[PadMailbox.MaxPads];
     private readonly List<DataChannel> _channels = [];
     private readonly HashSet<ushort> _greeted = [];
     private readonly List<string> _opened = [];
     private readonly List<string> _kinds = [];
 
-    public ConsoleChannels(DtlsTransport dtls, DtlsDatagramBridge bridge, TimeProvider clock, IRandomSource random)
+    private DataChannel? _input;
+    private DataChannel? _control;
+    private bool _established;
+
+    public ConsoleChannels(DtlsTransport dtls, DtlsDatagramBridge bridge, PadMailbox pads, TimeProvider clock, IRandomSource random)
     {
         _dtls = dtls;
         _bridge = bridge;
+        _pads = pads;
         _random = random;
 
         // SCTP over the session, the channels on it, the input reports and the room for one record.
         _association = new SctpAssociation(new DtlsSctpOutput(dtls), clock, random, SctpOptions.Default);
         _hub = new DataChannelHub(_association, DataChannelSide.DtlsClient);
-        _input = new InputReportWriter(clock);
+        _reports = new InputReportWriter(clock);
         _record = new byte[dtls.GetReceiveLimit()];
     }
 
@@ -54,26 +63,25 @@ public sealed class ConsoleChannels
 
     public int Sent { get; private set; }
 
+    /// <summary>Gamepad reports written onto the input channel.</summary>
+    public long InputReportsSent { get; private set; }
+
+    /// <summary>The running game's title id, once the console named it.</summary>
+    public string? TitleId { get; private set; }
+
+    /// <summary>True once the association was established and has closed again: the console ended the stream.</summary>
+    public bool HasEnded => _established && _association.State == SctpAssociationState.Closed;
+
     /// <summary>Starts the association; the channels are asked for once it is established.</summary>
     public void Open()
     {
         _association.Connect();
     }
 
-    private void RequestChannels()
-    {
-        if (_channels.Count > 0 || _association.State != SctpAssociationState.Established)
-        {
-            return;
-        }
-
-        _channels.Add(_hub.Open(DataChannelOptions.Reliable(XHomeChannels.InputLabel, XHomeChannels.InputProtocol)));
-        _channels.Add(_hub.Open(DataChannelOptions.Reliable(XHomeChannels.ControlLabel, XHomeChannels.ControlProtocol)));
-        _channels.Add(_hub.Open(DataChannelOptions.Reliable(XHomeChannels.MessageLabel, XHomeChannels.MessageProtocol)));
-        _channels.Add(_hub.Open(DataChannelOptions.Reliable(XHomeChannels.ChatLabel, XHomeChannels.ChatProtocol)));
-    }
-
-    /// <summary>Decrypts what arrived, runs SCTP, greets channels that opened and answers the console's messages.</summary>
+    /// <summary>
+    /// Decrypts what arrived, runs SCTP, greets channels that opened, answers the console's messages and sends the pads'
+    /// waiting states.
+    /// </summary>
     public void Pump()
     {
         // Only when a record waits, and then with a 1 ms bound: BouncyCastle reads a wait of 0 as "forever".
@@ -93,11 +101,29 @@ public sealed class ConsoleChannels
         RequestChannels();
         GreetOpened();
         Answer();
+        SendPads();
     }
 
     public ChannelReport Report(TimeSpan? firstRtp)
     {
         return new ChannelReport(_association.State.ToString(), _opened, Received, Sent, _kinds, firstRtp);
+    }
+
+    private void RequestChannels()
+    {
+        if (_channels.Count > 0 || _association.State != SctpAssociationState.Established)
+        {
+            return;
+        }
+
+        _established = true;
+        _input = _hub.Open(DataChannelOptions.Reliable(XHomeChannels.InputLabel, XHomeChannels.InputProtocol));
+        _control = _hub.Open(DataChannelOptions.Reliable(XHomeChannels.ControlLabel, XHomeChannels.ControlProtocol));
+        _channels.Add(_input);
+        _channels.Add(_control);
+
+        _channels.Add(_hub.Open(DataChannelOptions.Reliable(XHomeChannels.MessageLabel, XHomeChannels.MessageProtocol)));
+        _channels.Add(_hub.Open(DataChannelOptions.Reliable(XHomeChannels.ChatLabel, XHomeChannels.ChatProtocol)));
     }
 
     private void GreetOpened()
@@ -122,6 +148,7 @@ public sealed class ConsoleChannels
             case XHomeChannels.ControlLabel:
                 SendText(channel, ControlMessages.Authorization());
                 SendText(channel, ControlMessages.GamepadChanged(0, true));
+                _announced[0] = true;
 
                 return;
             case XHomeChannels.MessageLabel:
@@ -129,7 +156,7 @@ public sealed class ConsoleChannels
 
                 return;
             case XHomeChannels.InputLabel:
-                int written = _input.WriteClientMetadata(_report, 0);
+                int written = _reports.WriteClientMetadata(_report, 0);
                 _hub.SendBinary(channel, _report.AsSpan(0, written));
                 Sent++;
 
@@ -150,14 +177,64 @@ public sealed class ConsoleChannels
 
             if (channel.Label == XHomeChannels.MessageLabel)
             {
-                var client = new ClientDescription(DisplayWidth, DisplayHeight, MessageIds.Next(_random), MessageIds.Next(_random, ClientDescription.MessageCount));
-
-                foreach (string reply in MessageChannel.Answer(text, client))
-                {
-                    SendText(channel, reply);
-                }
+                AnswerMessage(channel, text);
             }
         }
+    }
+
+    private void AnswerMessage(DataChannel channel, string text)
+    {
+        TitleId = TitleInfo.Read(text) ?? TitleId;
+        var client = new ClientDescription(DisplayWidth, DisplayHeight, MessageIds.Next(_random), MessageIds.Next(_random, ClientDescription.MessageCount));
+
+        foreach (string reply in MessageChannel.Answer(text, client))
+        {
+            SendText(channel, reply);
+        }
+    }
+
+    /// <summary>
+    /// Every pad state waiting goes out at once, once the input channel is open; a state the association cannot take
+    /// now goes back to wait for the next turn, unless a newer one came.
+    /// </summary>
+    private void SendPads()
+    {
+        var input = _input;
+
+        if (input is null || input.State != DataChannelState.Open)
+        {
+            return;
+        }
+
+        while (_pads.TryTake(out byte index, out var pad))
+        {
+            Announce(index);
+            int written = _reports.WriteGamepad(_report, index, in pad);
+
+            if (!_hub.SendBinary(input, _report.AsSpan(0, written)))
+            {
+                _pads.Restore(index, in pad);
+
+                return;
+            }
+
+            InputReportsSent++;
+            Sent++;
+        }
+    }
+
+    /// <summary>A pad other than the first is announced on the control channel before its first report.</summary>
+    private void Announce(byte index)
+    {
+        var control = _control;
+
+        if (_announced[index] || control is null || control.State != DataChannelState.Open)
+        {
+            return;
+        }
+
+        SendText(control, ControlMessages.GamepadChanged(index, true));
+        _announced[index] = true;
     }
 
     /// <summary>Keeps the kind of a console message (its type and target, or "binary"), never its contents.</summary>

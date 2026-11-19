@@ -88,6 +88,11 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
 Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
 
 - the gamepad entry's physicality fields (sent as 0) and the report's exact size;
+- the `/streaming/properties/titleinfo` message's content: `TitleInfo` reads a `titleId` field of it in any letter case,
+  as a string or a number, whether the content is JSON text or an object; the field's real name and form are not seen
+  yet;
+- whether a pad other than pad 0 needs its own `gamepadChanged` on the control channel before its first report (the
+  stream sends one);
 - the vibration report's layout;
 - the client description messages after the handshake, and whether the console needs all of them;
 - whether the engine's H.264 decoder (openh264) takes the console's Main-profile stream at 1440p60 as fast as the

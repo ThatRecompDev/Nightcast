@@ -7,6 +7,7 @@ using Phantom.Engine.Core.Collections;
 using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Net.Transport;
 using Phantom.Relay.Stream.Channels;
+using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.Dtls;
@@ -37,6 +38,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private readonly IDatagramTransport _transport;
     private readonly DecodeWorker _video;
     private readonly IStreamAudioSink _audio;
+    private readonly PadMailbox _pads;
     private readonly TimeProvider _clock;
     private readonly IRandomSource _random;
     private readonly IceAgent _agent;
@@ -52,11 +54,14 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private long _channelsStartedAt;
     private DatagramEndpoint? _path;
 
-    public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, TimeProvider clock, IRandomSource random)
+    public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, PadMailbox pads, TimeProvider clock, IRandomSource random)
     {
         _transport = transport;
         _video = video;
         _audio = audio;
+        _pads = pads;
+
+        // The thread's clock and randomness.
         _clock = clock;
         _random = random;
 
@@ -251,7 +256,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
         _session = session;
         _path = _agent.Selected;
         Media = new MediaReceiver(_client!.Profile!.Value, _client.KeyingMaterial!, VideoPayloads.Of(_answer), this, _video, _audio, _clock);
-        Channels = new ConsoleChannels(session, _bridge!, _clock, _random);
+        Channels = new ConsoleChannels(session, _bridge!, _pads, _clock, _random);
         Channels.Open();
         _channelsStartedAt = _clock.GetTimestamp();
     }

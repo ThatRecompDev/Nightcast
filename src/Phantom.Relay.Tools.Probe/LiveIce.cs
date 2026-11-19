@@ -2,6 +2,7 @@
 
 using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Net.Transport;
+using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.WebRtc.Dtls;
@@ -24,6 +25,7 @@ public sealed class LiveIce : ILiveIce
     private readonly uint _hostAddress;
     private readonly DecodeWorker _video;
     private readonly SilentAudioSink _audio = new();
+    private readonly PadMailbox _pads = new();
     private readonly TimeProvider _clock;
     private readonly IRandomSource _random;
     private readonly TimeSpan _listen;
@@ -52,7 +54,7 @@ public sealed class LiveIce : ILiveIce
             return new IceOutcome(IceAgentState.Failed, null, TimeSpan.Zero, null, null, 0, 0, 0, 0);
         }
 
-        using var link = new ConsoleLink(_transport, local, _video, _audio, _clock, _random);
+        using var link = new ConsoleLink(_transport, local, _video, _audio, _pads, _clock, _random);
         var exchanged = await _sessions.ExchangeIceAsync(session, [link.HostCandidate(_hostAddress)], cancellation);
         long start = _clock.GetTimestamp();
         link.StartIce(answer, exchanged);
