@@ -2,6 +2,7 @@
 
 using Org.BouncyCastle.Tls;
 using Org.BouncyCastle.Tls.Crypto.Impl.BC;
+using Phantom.Relay.WebRtc.Srtp;
 
 namespace Phantom.Relay.WebRtc.Dtls;
 
@@ -32,8 +33,11 @@ public sealed class DtlsSrtpClient : DefaultTlsClient
     /// <summary>The profile the server chose, once it answered.</summary>
     public SrtpProfile? Profile { get; private set; }
 
-    /// <summary>The exported keys, once the handshake completed.</summary>
-    public SrtpKeys? Keys { get; private set; }
+    /// <summary>
+    /// The exported keying material (both directions' keys, then both salts), once the handshake completed; split it
+    /// with <see cref="SrtpKeyingMaterial.Split"/>, this side being the DTLS client.
+    /// </summary>
+    public byte[]? KeyingMaterial { get; private set; }
 
     /// <summary>The negotiated cipher suite (IANA number), once the handshake completed.</summary>
     public int CipherSuite { get; private set; }
@@ -69,8 +73,7 @@ public sealed class DtlsSrtpClient : DefaultTlsClient
     {
         base.NotifyHandshakeComplete();
         var profile = Profile ?? throw new TlsFatalAlert(AlertDescription.internal_error);
-        byte[] material = m_context.ExportKeyingMaterial(SrtpKeys.ExporterLabel, null, SrtpKeys.MaterialLength(profile));
-        Keys = SrtpKeys.Split(profile, material);
+        KeyingMaterial = m_context.ExportKeyingMaterial(SrtpKeyingMaterial.ExporterLabel, null, SrtpKeyingMaterial.ExporterLength(profile));
         CipherSuite = m_context.SecurityParameters.CipherSuite;
     }
 
@@ -105,7 +108,7 @@ public sealed class DtlsSrtpClient : DefaultTlsClient
             case SrtpProtectionProfile.SRTP_AEAD_AES_128_GCM:
                 return SrtpProfile.AeadAes128Gcm;
             case SrtpProtectionProfile.SRTP_AES128_CM_HMAC_SHA1_80:
-                return SrtpProfile.AesCm128HmacSha1_80;
+                return SrtpProfile.AesCm128HmacSha1Tag80;
             default:
                 throw new TlsFatalAlert(AlertDescription.illegal_parameter);
         }

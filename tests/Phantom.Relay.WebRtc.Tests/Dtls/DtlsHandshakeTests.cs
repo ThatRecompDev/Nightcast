@@ -4,6 +4,7 @@ using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Tls;
 using Org.BouncyCastle.Tls.Crypto.Impl.BC;
 using Phantom.Relay.WebRtc.Dtls;
+using Phantom.Relay.WebRtc.Srtp;
 
 namespace Phantom.Relay.WebRtc.Tests.Dtls;
 
@@ -27,9 +28,7 @@ public sealed class DtlsHandshakeTests
 
         Assert.Equal(SrtpProfile.AeadAes128Gcm, client.Profile);
         Assert.Equal(CipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256, client.CipherSuite);
-        var expected = SrtpKeys.Split(SrtpProfile.AeadAes128Gcm, server.Material);
-        Assert.Equal(expected.ClientKey, client.Keys!.ClientKey);
-        Assert.Equal(expected.ServerSalt, client.Keys.ServerSalt);
+        Assert.Equal(server.Material, client.KeyingMaterial);
         Assert.Equal(clientCertificate.Encoded, server.ClientCertificate);
     }
 
@@ -45,7 +44,7 @@ public sealed class DtlsHandshakeTests
         var error = Record.Exception(() => Handshake(client, new FakeDtlsServer(crypto, serverCertificate)));
 
         Assert.NotNull(error);
-        Assert.Null(client.Keys);
+        Assert.Null(client.KeyingMaterial);
     }
 
     [Fact]
@@ -59,20 +58,6 @@ public sealed class DtlsHandshakeTests
         Assert.Equal(certificate.Fingerprint, read);
         Assert.True(DtlsFingerprint.Matches(certificate.Encoded, read!));
         Assert.Equal(32, certificate.Fingerprint.Split(':').Length);
-    }
-
-    [Fact]
-    public void The_exported_block_splits_into_keys_then_salts()
-    {
-        byte[] material = [.. Enumerable.Range(0, 60).Select(static i => (byte)i)];
-
-        var keys = SrtpKeys.Split(SrtpProfile.AesCm128HmacSha1_80, material);
-
-        Assert.Equal(0, keys.ClientKey[0]);
-        Assert.Equal(16, keys.ServerKey[0]);
-        Assert.Equal(32, keys.ClientSalt[0]);
-        Assert.Equal(46, keys.ServerSalt[0]);
-        Assert.Equal(14, keys.ServerSalt.Length);
     }
 
     /// <summary>Runs both sides on their own threads and carries their datagrams across, as the network loop will.</summary>

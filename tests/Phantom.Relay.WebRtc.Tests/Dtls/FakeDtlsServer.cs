@@ -4,6 +4,7 @@ using Org.BouncyCastle.Tls;
 using Org.BouncyCastle.Tls.Crypto;
 using Org.BouncyCastle.Tls.Crypto.Impl.BC;
 using Phantom.Relay.WebRtc.Dtls;
+using Phantom.Relay.WebRtc.Srtp;
 
 namespace Phantom.Relay.WebRtc.Tests.Dtls;
 
@@ -57,7 +58,7 @@ public sealed class FakeDtlsServer : DefaultTlsServer
     public override void NotifyHandshakeComplete()
     {
         base.NotifyHandshakeComplete();
-        Material = m_context.ExportKeyingMaterial(SrtpKeys.ExporterLabel, null, SrtpKeys.MaterialLength(SrtpProfile.AeadAes128Gcm));
+        Material = m_context.ExportKeyingMaterial(SrtpKeyingMaterial.ExporterLabel, null, SrtpKeyingMaterial.ExporterLength(SrtpProfile.AeadAes128Gcm));
     }
 
     protected override ProtocolVersion[] GetSupportedVersions()
