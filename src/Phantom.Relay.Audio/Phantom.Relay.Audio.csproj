@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Audio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Audio.Tests" />
+  </ItemGroup>
+
+</Project>
