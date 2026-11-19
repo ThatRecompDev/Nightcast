@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using System.Runtime.Versioning;
 using Phantom.Engine.Core;
 using Phantom.Engine.Hosting.Gamepads;
 using Phantom.Engine.Hosting.Input;
 using Phantom.Relay.Pads.Windows.Devices;
+using Phantom.Relay.Pads.Windows.Hid;
 using Phantom.Relay.Pads.Windows.Reports;
 
 namespace Phantom.Relay.Pads.Windows;
@@ -33,6 +35,13 @@ public sealed class PlayStationPads : IGamepadSource, IGamepadFeedback, IGamepad
     private readonly HashSet<string> _ignored = new(StringComparer.OrdinalIgnoreCase);
     private readonly ManualResetEventSlim _stopping = new();
     private Thread? _discovery;
+
+    /// <summary>The pads Windows' HID API finds, each read on a thread of its own; nothing runs before <see cref="Start"/>.</summary>
+    [SupportedOSPlatform("windows")]
+    public PlayStationPads()
+        : this(new WindowsHidHost(), new ThreadPadWorkers())
+    {
+    }
 
     internal PlayStationPads(IHidHost host, IPadWorkers workers)
     {
