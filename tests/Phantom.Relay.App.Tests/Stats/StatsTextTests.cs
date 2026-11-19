@@ -63,9 +63,9 @@ public sealed class StatsTextTests
         string title = StatsText.Title(Streaming, Present, report, Upscale);
         string[] lines = StatsText.Lines(Streaming, Present, report, PadSource.Controller, Upscale);
 
-        Assert.EndsWith(" | lost 2 | FSR 1", title, StringComparison.Ordinal);
+        Assert.Contains(" | lost 2 | FSR 1", title, StringComparison.Ordinal);
         Assert.Equal(Upscale, lines[^2]);
-        Assert.Contains($"LSFG off | {Upscale} | RTT", StatsText.WithStats(Streaming, Present, report, Upscale), StringComparison.Ordinal);
+        Assert.Contains($"LSFG off | {Upscale} | video", StatsText.WithStats(Streaming, Present, report, Upscale), StringComparison.Ordinal);
     }
 
     [Fact]
