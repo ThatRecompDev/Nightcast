@@ -57,6 +57,33 @@ public sealed class RtcpWriterTests
     }
 
     [Fact]
+    public void A_remb_of_80_megabits_is_mantissa_156250_times_two_to_the_ninth()
+    {
+        var buffer = new byte[64];
+
+        // 80 000 000 >> 8 = 312 500 does not fit 18 bits; >> 9 = 156 250 (0x2625A) does: 01 | 9 << 18 | 0x2625A.
+        int length = RtcpWriter.WriteReceiverEstimatedMaxBitrate(buffer, Me, 80_000_000, [Console]);
+
+        Assert.Equal("8FCE0005" + "01020304" + "00000000" + "52454D42" + "0126625A" + "A0B0C0D0", Convert.ToHexString(buffer.AsSpan(0, length)));
+    }
+
+    [Fact]
+    public void A_small_remb_needs_no_exponent_and_names_every_source()
+    {
+        var buffer = new byte[64];
+
+        int length = RtcpWriter.WriteReceiverEstimatedMaxBitrate(buffer, Me, 100_000, [Console, 0x11223344]);
+
+        Assert.Equal("8FCE0006" + "01020304" + "00000000" + "52454D42" + "020186A0" + "A0B0C0D0" + "11223344", Convert.ToHexString(buffer.AsSpan(0, length)));
+    }
+
+    [Fact]
+    public void A_remb_names_one_source_at_least()
+    {
+        Assert.Throws<ArgumentException>(() => RtcpWriter.WriteReceiverEstimatedMaxBitrate(new byte[64], Me, 1, []));
+    }
+
+    [Fact]
     public void A_receiver_report_carries_loss_highest_sequence_jitter_and_the_sender_report_echo()
     {
         var statistics = new RtpReceiveStatistics(_clock, 90000);
@@ -117,6 +144,7 @@ public sealed class RtcpWriterTests
         var statistics = new RtpReceiveStatistics(_clock, 90000);
         RtpReceiveStatistics[] sources = [statistics];
         ushort[] lost = [1, 2, 40];
+        uint[] remb = [Console];
         var buffer = new byte[128];
         ushort sequence = 0;
 
@@ -126,6 +154,7 @@ public sealed class RtcpWriterTests
             RtcpWriter.WriteGenericNack(buffer, Me, Console, lost);
             RtcpWriter.WritePictureLossIndication(buffer, Me, Console);
             RtcpWriter.WriteReceiverReport(buffer, Me, sources);
+            RtcpWriter.WriteReceiverEstimatedMaxBitrate(buffer, Me, 80_000_000, remb);
         });
 
         Assert.Equal(0, report.BytesPerRun);

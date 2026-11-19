@@ -7,8 +7,8 @@ namespace Phantom.Relay.WebRtc.Rtp;
 
 /// <summary>
 /// Writes the RTCP a receiver sends into a caller's buffer: the generic NACK (RFC 4585 section 6.2.1) for lost
-/// packets, the picture loss indication (section 6.3.1) for a keyframe, and the receiver report (RFC 3550 section
-/// 6.4.2). Each returns its length; WebRTC's reduced-size RTCP (RFC 5506) lets each go out alone or be appended to the
+/// packets, the picture loss indication (section 6.3.1) for a keyframe, the receiver estimated maximum bitrate (REMB)
+/// and the receiver report (RFC 3550 section 6.4.2). Each returns its length; WebRTC's reduced-size RTCP (RFC 5506) lets each go out alone or be appended to the
 /// others to make a compound packet. Allocation-free.
 /// </summary>
 public static class RtcpWriter
@@ -79,6 +79,36 @@ public static class RtcpWriter
         return at;
     }
 
+    /// <summary>
+    /// A receiver estimated maximum bitrate (REMB, draft-alvestrand-rmcat-remb-03 section 2.2): application-layer
+    /// feedback (PSFB, FMT=15) from <paramref name="senderSsrc"/> with the media source 0, the identifier 'REMB', the
+    /// count of <paramref name="ssrcs"/>, <paramref name="bitsPerSecond"/> as an 18-bit mantissa times two to a 6-bit
+    /// exponent (the smallest exponent that fits, rounding down), then the SSRCs the bitrate applies to.
+    /// </summary>
+    [HotPath]
+    public static int WriteReceiverEstimatedMaxBitrate(Span<byte> destination, uint senderSsrc, ulong bitsPerSecond, ReadOnlySpan<uint> ssrcs)
+    {
+        int length = RtcpFormat.RembLength(ssrcs.Length);
+
+        if (ssrcs.IsEmpty || ssrcs.Length > RtcpFormat.MaxRembSsrcs || destination.Length < length)
+        {
+            throw new ArgumentException("A REMB names 1 to 255 sources and needs room for them.", nameof(ssrcs));
+        }
+
+        WriteHeader(destination, RtcpFormat.ApplicationLayerFormat, RtcpFormat.PayloadFeedback, length);
+        BinaryPrimitives.WriteUInt32BigEndian(destination[SenderOffset..], senderSsrc);
+        BinaryPrimitives.WriteUInt32BigEndian(destination[MediaOffset..], 0);
+        BinaryPrimitives.WriteUInt32BigEndian(destination[RtcpFormat.FeedbackHeaderLength..], RtcpFormat.RembIdentifier);
+        BinaryPrimitives.WriteUInt32BigEndian(destination[(RtcpFormat.FeedbackHeaderLength + RtcpFormat.SsrcLength)..], RembBitrate(ssrcs.Length, bitsPerSecond));
+
+        for (int i = 0; i < ssrcs.Length; i++)
+        {
+            BinaryPrimitives.WriteUInt32BigEndian(destination[(RtcpFormat.RembHeaderLength + (i * RtcpFormat.SsrcLength))..], ssrcs[i]);
+        }
+
+        return length;
+    }
+
     /// <summary>A receiver report from <paramref name="senderSsrc"/> with one report block per source.</summary>
     [HotPath]
     public static int WriteReceiverReport(Span<byte> destination, uint senderSsrc, ReadOnlySpan<RtpReceiveStatistics> sources)
@@ -106,6 +136,19 @@ public static class RtcpWriter
         destination[CountOffset] = (byte)(RtcpFormat.VersionBits | count);
         destination[TypeOffset] = (byte)type;
         BinaryPrimitives.WriteUInt16BigEndian(destination[LengthOffset..], (ushort)((length / RtcpFormat.WordLength) - 1));
+    }
+
+    /// <summary>REMB's bitrate word: the count, then the smallest exponent whose mantissa fits in 18 bits.</summary>
+    private static uint RembBitrate(int count, ulong bitsPerSecond)
+    {
+        int exponent = 0;
+
+        while ((bitsPerSecond >> exponent) > RtcpFormat.RembMaxMantissa)
+        {
+            exponent++;
+        }
+
+        return ((uint)count << RtcpFormat.RembCountShift) | ((uint)exponent << RtcpFormat.RembExponentShift) | (uint)(bitsPerSecond >> exponent);
     }
 
     private static int WriteNackEntry(Span<byte> destination, int at, ushort packetId, int mask)

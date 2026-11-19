@@ -35,6 +35,28 @@ public static class RtcpFormat
     /// <summary>The PSFB format of a picture loss indication.</summary>
     public const int PictureLossFormat = 1;
 
+    /// <summary>The PSFB format of application-layer feedback (RFC 4585 section 6.4), the format REMB uses.</summary>
+    public const int ApplicationLayerFormat = 15;
+
+    /// <summary>The RTPFB format of transport-wide feedback (draft-holmer-rmcat-transport-wide-cc-extensions-01).</summary>
+    public const int TransportWideFormat = 15;
+
+    /// <summary>REMB's unique identifier after the feedback header: the ASCII letters 'R' 'E' 'M' 'B'.</summary>
+    public const uint RembIdentifier = 0x52454D42;
+
+    /// <summary>A REMB's fixed part: the feedback header, the identifier and the count, exponent and mantissa word.</summary>
+    public const int RembHeaderLength = 20;
+
+    /// <summary>The count of SSRCs a REMB applies to is one octet.</summary>
+    public const int MaxRembSsrcs = 255;
+
+    /// <summary>The bitrate word: the SSRC count in the top 8 bits, a 6-bit exponent, an 18-bit mantissa.</summary>
+    public const int RembCountShift = 24;
+
+    public const int RembExponentShift = 18;
+
+    public const ulong RembMaxMantissa = (1 << RembExponentShift) - 1;
+
     /// <summary>A feedback message's common part: the header, the sender's SSRC and the media source's SSRC.</summary>
     public const int FeedbackHeaderLength = 12;
 
@@ -62,6 +84,12 @@ public static class RtcpFormat
     public static int MaxNackLength(int lostCount)
     {
         return FeedbackHeaderLength + (lostCount * NackEntryLength);
+    }
+
+    /// <summary>The length of a REMB naming <paramref name="ssrcs"/> media sources.</summary>
+    public static int RembLength(int ssrcs)
+    {
+        return RembHeaderLength + (ssrcs * SsrcLength);
     }
 
     /// <summary>The length of a receiver report with <paramref name="blocks"/> report blocks.</summary>
