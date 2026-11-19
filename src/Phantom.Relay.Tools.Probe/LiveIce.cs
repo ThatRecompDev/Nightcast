@@ -32,13 +32,9 @@ public sealed class LiveIce : ILiveIce, IRtcpOutput, IDisposable
 
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
 
-    /// <summary>
-    /// Long enough for the channels to open and the console to start streaming, and longer than one keep-alive
-    /// interval, so the round trip is measured again on the open path.
-    /// </summary>
-    private static readonly TimeSpan ListenAfterConnect = TimeSpan.FromSeconds(6);
-
     private readonly IXHomeSessionService _sessions;
+    private readonly PictureMailbox _mailbox;
+    private readonly TimeSpan _listen;
     private readonly IDatagramTransport _transport;
     private readonly uint _hostAddress;
     private readonly TimeProvider _clock;
@@ -53,9 +49,17 @@ public sealed class LiveIce : ILiveIce, IRtcpOutput, IDisposable
     private long _channelsStartedAt;
     private TimeSpan? _firstRtp;
 
-    public LiveIce(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, TimeProvider clock, IRandomSource random)
+    /// <summary>
+    /// Keeps the stream for <c>listen</c> once connected: a few seconds to measure, <see cref="TimeSpan.MaxValue"/> to
+    /// watch until cancelled.
+    /// </summary>
+    public LiveIce(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, TimeProvider clock, IRandomSource random, PictureMailbox mailbox, TimeSpan listen)
     {
         _sessions = sessions;
+        _mailbox = mailbox;
+        _listen = listen;
+
+        // The socket and the receive ring sized for its largest datagram.
         _transport = transport;
         _hostAddress = hostAddress;
         _clock = clock;
@@ -85,7 +89,7 @@ public sealed class LiveIce : ILiveIce, IRtcpOutput, IDisposable
         if (agent.State == IceAgentState.Connected)
         {
             outcome = RunDtls(agent, certificate, answer, outcome, cancellation);
-            Pump(agent, ListenAfterConnect, static () => false, cancellation);
+            Pump(agent, _listen, static () => false, cancellation);
             outcome = outcome with { Channels = _channels?.Report(_firstRtp), Media = _media?.Report() };
         }
 
@@ -141,7 +145,7 @@ public sealed class LiveIce : ILiveIce, IRtcpOutput, IDisposable
 
         // The session is up: the media path decrypts with the console's key, the data channels run over it.
         _path = agent.Selected;
-        _media = new MediaReceiver(client.Profile!.Value, client.KeyingMaterial!, VideoPayloads.Of(answer), this, _clock);
+        _media = new MediaReceiver(client.Profile!.Value, client.KeyingMaterial!, VideoPayloads.Of(answer), this, _mailbox, _clock);
         _channels = new ConsoleChannels(handshake.Result, _bridge, _clock, _random);
         _channels.Open();
         _channelsStartedAt = _clock.GetTimestamp();

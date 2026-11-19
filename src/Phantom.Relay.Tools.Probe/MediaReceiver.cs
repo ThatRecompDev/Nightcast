@@ -52,7 +52,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
     private long _units;
     private long _keyframes;
 
-    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, TimeProvider clock)
+    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, PictureMailbox mailbox, TimeProvider clock)
     {
         SrtpKeyingMaterial.Split(profile, keyingMaterial, localIsClient: true, out var own, out var console);
         _decrypt = SrtpContext.Create(profile, console, MaxSources);
@@ -63,7 +63,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
 
         _rtcp = rtcp;
         _clock = clock;
-        _decoder = OpenDecoder(clock, out _decoderProblem);
+        _decoder = OpenDecoder(mailbox, clock, out _decoderProblem);
         _decoder?.Start();
     }
 
@@ -134,7 +134,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         _decoder?.Dispose();
     }
 
-    private static DecodeWorker? OpenDecoder(TimeProvider clock, out string? problem)
+    private static DecodeWorker? OpenDecoder(PictureMailbox mailbox, TimeProvider clock, out string? problem)
     {
         var decoder = H264Decoder.TryOpen(out problem);
 
@@ -143,7 +143,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
             return null;
         }
 
-        return new DecodeWorker(decoder, clock);
+        return new DecodeWorker(decoder, mailbox, clock);
     }
 
     private void Route(ReadOnlySpan<byte> packet)

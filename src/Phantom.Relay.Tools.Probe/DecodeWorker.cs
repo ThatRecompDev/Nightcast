@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Collections.Concurrent;
-using Phantom.Engine.Media.Video;
 using Phantom.Engine.Media.Vpx;
 
 namespace Phantom.Relay.Tools.Probe;
@@ -14,7 +13,7 @@ public sealed class DecodeWorker : IDisposable
 {
     private readonly BlockingCollection<(byte[] Unit, uint Timestamp)> _queue = [];
     private readonly H264Decoder _decoder;
-    private readonly VideoFrame _picture = new();
+    private readonly PictureMailbox _mailbox;
     private readonly TimeProvider _clock;
     private readonly Thread _thread;
 
@@ -24,9 +23,10 @@ public sealed class DecodeWorker : IDisposable
     private long _worstTicks;
     private int _deepestQueue;
 
-    public DecodeWorker(H264Decoder decoder, TimeProvider clock)
+    public DecodeWorker(H264Decoder decoder, PictureMailbox mailbox, TimeProvider clock)
     {
         _decoder = decoder;
+        _mailbox = mailbox;
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "Relay video decode" };
     }
@@ -35,9 +35,9 @@ public sealed class DecodeWorker : IDisposable
 
     public long Decoded => Interlocked.Read(ref _decoded);
 
-    public int Width => _picture.Width;
+    public int Width { get; private set; }
 
-    public int Height => _picture.Height;
+    public int Height { get; private set; }
 
     public int DeepestQueue => _deepestQueue;
 
@@ -85,8 +85,12 @@ public sealed class DecodeWorker : IDisposable
             long start = _clock.GetTimestamp();
             _decoder.Decode(unit, timestamp);
 
-            while (_decoder.TakePicture(_picture))
+            // Each picture goes straight to the mailbox: the renderer shows the newest.
+            while (_decoder.TakePicture(_mailbox.Back))
             {
+                Width = _mailbox.Back.Width;
+                Height = _mailbox.Back.Height;
+                _mailbox.Publish();
                 Interlocked.Increment(ref _pictures);
             }
 

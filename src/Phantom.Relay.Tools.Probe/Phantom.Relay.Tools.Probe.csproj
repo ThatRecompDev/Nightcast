@@ -5,6 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Graphics" />
+    <PackageReference Include="Phantom.Engine.Graphics.Sokol" />
     <PackageReference Include="Phantom.Engine.Media" />
     <PackageReference Include="Phantom.Engine.Media.Vpx" />
     <PackageReference Include="Phantom.Engine.Platform.Desktop" />
