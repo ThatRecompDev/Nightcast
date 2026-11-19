@@ -56,6 +56,12 @@ public sealed class LsfgGenerator : IDisposable
     /// </summary>
     public static LsfgGenerator? TryCreate(nint device, LsfgShaderCatalog catalog, LsfgSettings settings, int width, int height, LsfgFrameFormat format, ILogger log, out string? problem)
     {
+        return TryCreate(device, catalog, settings, width, height, format, LsfgWiring.Standard, log, out problem);
+    }
+
+    /// <summary>As the public one, with the graph's unsettled choices made as <paramref name="wiring"/> says (for measurements).</summary>
+    internal static LsfgGenerator? TryCreate(nint device, LsfgShaderCatalog catalog, LsfgSettings settings, int width, int height, LsfgFrameFormat format, LsfgWiring wiring, ILogger log, out string? problem)
+    {
         var normalized = settings.Normalized();
         var compute = ComputeDevice.Open(new StrategyBasedComWrappers(), device);
         var shaders = LsfgShaderSet.TryCreate(compute, catalog, normalized.PerformanceMode, out problem);
@@ -69,7 +75,7 @@ public sealed class LsfgGenerator : IDisposable
         }
 
         var pixelFormat = format == LsfgFrameFormat.Bgra8 ? Direct3D11Values.Bgra8Format : Direct3D11Values.Rgba8Format;
-        var pipeline = LsfgPipeline.TryBuild(compute, shaders, normalized, width, height, pixelFormat, out problem);
+        var pipeline = LsfgPipeline.TryBuild(compute, shaders, normalized, width, height, pixelFormat, wiring, out problem);
 
         if (pipeline is null)
         {

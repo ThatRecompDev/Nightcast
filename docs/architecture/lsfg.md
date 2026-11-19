@@ -54,7 +54,7 @@ Per generated frame (66 dispatches), with `Timestamp` = (index + 1) / (count + 1
 
 | Pass | Ids | Reads | Writes |
 |---|---|---|---|
-| gamma, each flow level 0 (coarsest) to 6 | 257, then 259-262 | both frames' features at the level, the coarser level's flow (none at level 0: `FirstIter`), the mask level of the same size | the level's flow (forward in xy, backward in zw) |
+| gamma, each flow level 0 (coarsest) to 6 | 257, then 259-262 | both frames' features at the level, the coarser level's flow (none at level 0: `FirstIter`), the mask level two finer than the level's size (measured, see "Artifact review") | the level's flow (forward in xy, backward in zw) |
 | delta flow, levels 4 to 6 | 257, then 263-266 | as gamma, the prior being the previous iteration's second flow (gamma level 3's flow on the first) | a second flow candidate |
 | delta blend, levels 4 to 6 | 258, then 271-274 | both frames' features, the coarser gamma flow, the previous second flow and weights (none on the first: `FirstIterS`) | the blend weights |
 | generate | 256 (16x16 groups) | previous frame, current frame, finest flow, finest second flow, weights | the generated frame (R8G8B8A8) |
@@ -85,13 +85,47 @@ quality mode and 0.3 in performance mode, against 11 for a plain blend. GPU time
 
 ## Still hypotheses (not settled by a test)
 
-- **Beta's frame order**: the 12 inputs are fed oldest frame first. A swap would change only the UI mask.
+- **Beta's frame order**: the 12 inputs are fed oldest frame first. A swap would change only the UI mask; measured
+  below, it makes no difference worth the name, so the order stays.
 - **Delta's priors**: the first delta iteration's flow chain starting from gamma level 3's flow, and the blend
   correlation's two flow inputs being the coarser level's gamma flow and the previous second flow. The second flow
-  measured right, so the flow chain's wiring holds; the blend inputs are less certain.
-- **The mask level** per flow level (same size; the coarsest flow level reuses the coarsest mask).
-- **Samplers**: both bound as bilinear clamp; Lossless Scaling's own sampler states are not known.
+  measured right, so the flow chain's wiring holds; the blend inputs are less certain (not measured yet).
+- **The mask level** per flow level: two levels finer than the level's size since the artifact review (below), which
+  measured it; what Lossless Scaling itself binds is not known.
+- **Samplers**: both bound as bilinear clamp; point sampling measured far worse (below). Lossless Scaling's own sampler
+  states are not known.
 - **HDR**: `AdvancedColorKind` 2 and `HdrSupport` are not driven; only SDR frames are supported.
+
+## Artifact review (2026-11-19)
+
+The owner saw artifacts around the head of GTA VI's character: a still foreground over a background the turning camera
+moves. `LsfgArtifactLiveTests` renders that case at 1440p: a textured ellipse of 400 x 540 px (head and shoulders)
+still in the middle, a textured background moving 16, 32 or 64 px a frame; three frames in, the frame between the last
+two out, compared with the ideal middle frame (background moved 1.5 steps). The mean luma error is taken in the band
+around the edge (as wide as two steps, at least 32 px: where background is uncovered and covered), inside the
+foreground, and in the background beyond the band; each of the graph's unsettled choices (`LsfgWiring`) is run. With
+`LSFG_ARTIFACT_DIR` set it writes 800 x 800 crops (generated, ideal, difference x4) as PNG. Edge band error, x2 quality:
+
+| Wiring | 16 px | 32 px | 64 px | foreground | background (32 px) |
+|---|---|---|---|---|---|
+| mask of the same size (before) | 0.72 | 1.54 | 2.65 | 0.00 | 0.22 |
+| mask one level coarser | 0.85 | 1.82 | 3.44 | 0.00 | 0.23 |
+| mask one level finer | 0.64 | 1.33 | 2.30 | 0.00 | 0.21 |
+| **mask two levels finer (now)** | **0.62** | **1.24** | **2.14** | **0.00** | **0.21** |
+| the finest mask everywhere | 0.67 | 1.24 | 2.15 | 0.00 | 0.21 |
+| no mask at all | 0.73 | 1.39 | 2.06 | 0.03 | 0.20 |
+| beta newest first (mask two finer) | 0.63 | 1.31 | 2.13 | 0.00 | 0.21 |
+| point samplers (mask two finer) | 1.93 | 3.46 | 9.94 | 0.00 | 7.76 |
+| a plain 50/50 blend, for scale | 2.03 | 7.18 | 15.03 | 0.00 | 12.57 |
+
+What it shows: the UI mask is what keeps a still region exact (without it the foreground itself picks up error), but
+read at the coarse flow levels at their own size it also holds the background still in a wide, blocky halo around the
+still foreground (the difference image shows it reaching some 100 px out at 32 px a frame). A finer mask level keeps
+the held region tight: two levels finer cuts the edge error by 14 to 19 % at every speed, with the foreground still
+exact and the background no worse, so it is adopted (`LsfgWiring.FinerMask`). Coarser is worse, finer still (the finest
+everywhere) gains nothing more. Beta's order makes no consistent difference (oldest first kept). Point sampling breaks
+the flow (the background error rises 35-fold): bilinear stays. What is left at the edge is the interpolation's own
+disocclusion error, a few levels at most. Only a live run says whether this is the artifact the owner saw.
 
 ## NV12 to RGBA
 

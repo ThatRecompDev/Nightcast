@@ -57,6 +57,9 @@ internal static class Direct3D11Values
     /// <summary>D3D11_UAV_DIMENSION_TEXTURE2D.</summary>
     public const uint UnorderedAccessTexture2D = 4;
 
+    /// <summary>D3D11_FILTER_MIN_MAG_MIP_POINT.</summary>
+    public const uint PointFilter = 0;
+
     /// <summary>D3D11_FILTER_MIN_MAG_MIP_LINEAR.</summary>
     public const uint LinearFilter = 0x15;
 

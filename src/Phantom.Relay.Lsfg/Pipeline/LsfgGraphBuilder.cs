@@ -25,15 +25,17 @@ internal sealed class LsfgGraphBuilder
     private readonly TextureArena _arena;
     private readonly LsfgPassFactory _passes;
     private readonly LsfgGraph _graph;
+    private readonly LsfgWiring _wiring;
     private readonly GpuTexture[] _mips = new GpuTexture[LsfgShapes.Levels];
     private readonly GpuTexture[][][] _features = new GpuTexture[LsfgShapes.RingFrames][][];
     private GpuTexture[] _masks = [];
 
-    public LsfgGraphBuilder(LsfgShaderSet set, TextureArena arena, LsfgGraph graph)
+    public LsfgGraphBuilder(LsfgShaderSet set, TextureArena arena, LsfgGraph graph, LsfgWiring wiring)
     {
         _set = set;
         _arena = arena;
         _graph = graph;
+        _wiring = wiring;
         _passes = new LsfgPassFactory(set);
     }
 
@@ -60,8 +62,15 @@ internal sealed class LsfgGraphBuilder
         BuildAlpha();
         BuildBeta();
 
-        var flow = new LsfgFlowBuilder(_set, _arena, _passes, _graph);
-        var (flows, flows2, weights) = flow.Build(_features, _masks);
+        var flow = new LsfgFlowBuilder(_set, _arena, _passes, _graph, _wiring.MaskShift);
+        var masks = _masks;
+
+        if (_wiring.WithoutMask)
+        {
+            masks = [_arena.Create(1, 1, Direct3D11Values.R8Format, writable: false)];
+        }
+
+        var (flows, flows2, weights) = flow.Build(_features, masks);
         BuildGenerate(width, height, flows, flows2, weights);
     }
 
@@ -173,8 +182,15 @@ internal sealed class LsfgGraphBuilder
         {
             var oldest = _features[(phase + 1) % LsfgShapes.RingFrames][0];
             var middle = _features[(phase + LsfgShapes.RingFrames - 1) % LsfgShapes.RingFrames][0];
+            var inputs = LsfgPassFactory.Views(oldest, middle, _features[phase][0]);
+
+            if (_wiring.BetaNewestFirst)
+            {
+                inputs = LsfgPassFactory.Views(_features[phase][0], middle, oldest);
+            }
+
             var passes = new ComputePass[LsfgShaderIds.BetaSteps];
-            passes[0] = _passes.Pass(LsfgShaderIds.BetaFirst, LsfgPassFactory.Views(oldest, middle, _features[phase][0]), steps[0], _graph.Constants);
+            passes[0] = _passes.Pass(LsfgShaderIds.BetaFirst, inputs, steps[0], _graph.Constants);
 
             for (var step = 1; step < LsfgShaderIds.BetaSteps; step++)
             {

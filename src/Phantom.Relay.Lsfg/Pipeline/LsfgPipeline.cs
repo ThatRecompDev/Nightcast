@@ -50,8 +50,15 @@ internal sealed class LsfgPipeline : IDisposable
     public int PassesPerGenerated => _graph.Flow[0].Length + 1;
 
     /// <summary>The graph for frames of the given size and format; null and why when the device refuses a part.</summary>
-    public static LsfgPipeline? TryBuild(ComputeDevice device, LsfgShaderSet set, LsfgSettings settings, int width, int height, uint format, out string? problem)
+    public static LsfgPipeline? TryBuild(ComputeDevice device, LsfgShaderSet set, LsfgSettings settings, int width, int height, uint format, LsfgWiring wiring, out string? problem)
     {
+        var filter = Direct3D11Values.LinearFilter;
+
+        if (wiring.PointSampling)
+        {
+            filter = Direct3D11Values.PointFilter;
+        }
+
         var (flowWidth, flowHeight) = LsfgGraphBuilder.FlowSize(width, height, settings.FlowScale);
         var values = new LsfgConstants
         {
@@ -64,7 +71,7 @@ internal sealed class LsfgPipeline : IDisposable
         {
             FlowWidth = flowWidth,
             FlowHeight = flowHeight,
-            Sampler = device.CreateLinearClampSampler(),
+            Sampler = device.CreateClampSampler(filter),
         };
 
         var first = values with { FirstIter = 1 };
@@ -86,7 +93,7 @@ internal sealed class LsfgPipeline : IDisposable
 
         try
         {
-            new LsfgGraphBuilder(set, arena, graph).Build(width, height, format);
+            new LsfgGraphBuilder(set, arena, graph, wiring).Build(width, height, format);
         }
         catch (InvalidOperationException exception)
         {

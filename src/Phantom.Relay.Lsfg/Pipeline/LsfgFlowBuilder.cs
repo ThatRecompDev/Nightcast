@@ -22,6 +22,7 @@ internal sealed class LsfgFlowBuilder
     private readonly TextureArena _arena;
     private readonly LsfgPassFactory _passes;
     private readonly LsfgGraph _graph;
+    private readonly int _maskShift;
     private readonly LsfgLevel[] _gamma = new LsfgLevel[LsfgShapes.Levels];
     private readonly LsfgLevel[] _deltaFlow = new LsfgLevel[DeltaIterations];
     private readonly LsfgLevel[] _deltaBlend = new LsfgLevel[DeltaIterations];
@@ -29,12 +30,13 @@ internal sealed class LsfgFlowBuilder
     private GpuTexture[] _masks = [];
     private GpuTexture _unused = null!;
 
-    public LsfgFlowBuilder(LsfgShaderSet set, TextureArena arena, LsfgPassFactory passes, LsfgGraph graph)
+    public LsfgFlowBuilder(LsfgShaderSet set, TextureArena arena, LsfgPassFactory passes, LsfgGraph graph, int maskShift)
     {
         _set = set;
         _arena = arena;
         _passes = passes;
         _graph = graph;
+        _maskShift = maskShift;
     }
 
     /// <summary>Builds the flow passes of every ring phase; returns what generate reads.</summary>
@@ -152,9 +154,10 @@ internal sealed class LsfgFlowBuilder
         return [.. previous, .. current];
     }
 
-    // The UI mask level of the same size as the flow level (beta's levels start at the finest features' size).
+    // The UI mask level shifted (LsfgWiring.MaskShift; the stream's: two levels finer) from the one of the flow level's
+    // size (beta's levels start at the finest features' size), within the levels there are.
     private GpuTexture Mask(int level)
     {
-        return _masks[Math.Min(PyramidLevel(level), _masks.Length - 1)];
+        return _masks[Math.Clamp(PyramidLevel(level) + _maskShift, 0, _masks.Length - 1)];
     }
 }

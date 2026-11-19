@@ -116,9 +116,15 @@ internal sealed unsafe class ComputeDevice : IDisposable
     /// <summary>A bilinear sampler that clamps at the edges.</summary>
     public nint CreateLinearClampSampler()
     {
+        return CreateClampSampler(Direct3D11Values.LinearFilter);
+    }
+
+    /// <summary>A sampler with <paramref name="filter"/> (a D3D11_FILTER) that clamps at the edges.</summary>
+    public nint CreateClampSampler(uint filter)
+    {
         var description = new SamplerDescription
         {
-            Filter = Direct3D11Values.LinearFilter,
+            Filter = filter,
             AddressU = Direct3D11Values.ClampAddress,
             AddressV = Direct3D11Values.ClampAddress,
             AddressW = Direct3D11Values.ClampAddress,
