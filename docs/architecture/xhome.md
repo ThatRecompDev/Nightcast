@@ -24,7 +24,7 @@ Every call goes to the default region's base address with `Authorization: Bearer
 | Call | Purpose |
 |---|---|
 | `GET v6/servers/home` | the consoles: server id, name, type, power state |
-| `POST v5/sessions/home/play` | start: server id, settings (`nanoVersion: "V3;WebrtcPath"`, `osName` android = 720p, windows = 1080p, tizen = 1080p high; 1440p: see below) |
+| `POST v5/sessions/home/play` | start: server id, settings (`nanoVersion: "V3;WebrtcTransport.dll"`, `osName` android = 720p, windows = 1080p, tizen = 1080p high or 1440p, see below) |
 | `GET {session}/state` | `WaitingForResources`, `Provisioning`, `ReadyToConnect`, `Provisioned`, `Failed` (with `errorDetails`) |
 | `POST {session}/sdp`, then `GET` until answered | the offer with the channel versions (chat 1, control 1-3, input 1-8, message 1) and the chat format (Opus in WebM, 24 kHz mono); the answer is JSON inside `exchangeResponse` |
 | `POST {session}/ice`, then `GET` until answered | the client's candidates plus `a=end-of-candidates`; the console's come back as `a=candidate:...` |
@@ -53,7 +53,17 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
 
 - The plain account chain (Microsoft account code, RPS user token, XSTS for `http://gssv.xboxlive.com/`, the
   `xhome` login) is accepted: no device token is needed (2026-11-19).
-- The console list and the play call are accepted, and a session reaches `Provisioning` on the console.
+- The console list and the play call are accepted, and a session is `Provisioned` on a Series X, with
+  `nanoVersion: "V3;WebrtcTransport.dll"`. The older `"V3;WebrtcPath"` made the console fail every session with
+  `0xC0840005` (`StartStreamingSessionV2Command failed`, state `ServerStartStreamingV2CommandSent`), at any tier.
+- **1440p60.** With `osName: "tizen"` and a 2560x1440 display in the device info, the console's answer offers
+  `a=imageattr:<pt> send [x=[0:2560],y=[0:1440],fps=[0:60]]` on video and sound.
+- The answer's codecs, from an offer of H.264 High (640033), Main (4d0033), Constrained Baseline (42e033) and AV1:
+  H.264 **Main, level 4.2 (`4d002a`)** first and Constrained Baseline (`42e02a`) second, both with
+  `level-asymmetry-allowed=1;packetization-mode=1`; neither High nor AV1. Sound: Opus 48 kHz stereo,
+  `minptime=10;useinbandfec=1`. The data channels' SCTP line is accepted.
+- No `/connect` call was needed for the console to answer the offer (open clients send one with a user token to
+  `{session}/connect`; whether the console offering needs it to carry media is not known yet).
 
 ## Not confirmed against a console yet
 
@@ -62,15 +72,9 @@ Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
 - the gamepad entry's physicality fields (sent as 0) and the report's exact size;
 - the vibration report's layout;
 - the client description messages after the handshake, and whether the console needs all of them;
-- whether the console starts streaming for our play request: on the first live probe (2026-11-19, a Series X that
-  was on) the session went `Provisioning` then `Failed` with the console's own error `0xC0840005`
-  (`StartStreamingSessionV2Command failed`, state `ServerStartStreamingV2CommandSent`) at both 1440p and 1080p. One
-  public report of the same state was cured by power-cycling the console; whether our request differs from the
-  official client's is open until the official client is checked on the same console;
+- whether the engine's H.264 decoder (openh264) takes the console's Main-profile stream at 1440p60 as fast as the
+  latency budget needs; Constrained Baseline is the fallback the console also offers;
 - the tier the `tizen` OS name gives on console streaming (it is known from cloud streaming);
-- **how a client asks for 1440p.** Remote play gained 1440p at higher bitrates in 2026 (first for Insiders; the
-  console must output 1440p or 4K, and "Auto" quality picks the highest the link allows). The web client's code names
-  the tiers 720, 720HQ, 1080, 1080HQ and 1440, but the play request's field for them has not been seen yet. Until it
-  is, `P1440` sends the highest known OS name and a 1440p display description. To settle it: start remote play on
-  xbox.com with 1440p chosen, read the play request in the browser's developer tools, and write the field here
-  (never the capture itself).
+- **which of the two asks for 1440p:** the `tizen` OS name or the 2560x1440 display in the device info (both were
+  sent when the console offered 1440p60); and whether the stream then holds 1440p under load or adapts down. Never
+  settle this from browser captures: their headers and cookies carry live account tokens.

@@ -20,8 +20,11 @@ public static class XHomeProtocol
 
     public const string KeepAlivePath = "keepalive";
 
-    /// <summary>The streaming stack the client asks for: WebRTC.</summary>
-    public const string NanoVersion = "V3;WebrtcPath";
+    /// <summary>
+    /// The streaming transport the console starts: its WebRTC transport. An older value, "V3;WebrtcPath", made the
+    /// console fail the session with 0xC0840005 (StartStreamingSessionV2Command) on a Series X, 2026-11-19.
+    /// </summary>
+    public const string NanoVersion = "V3;WebrtcTransport.dll";
 
     public const string SdkType = "web";
 
