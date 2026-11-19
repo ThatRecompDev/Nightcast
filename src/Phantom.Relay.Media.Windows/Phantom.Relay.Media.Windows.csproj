@@ -19,6 +19,8 @@
     <!-- The frame generation runs on the decoder's D3D11 device and shares these COM definitions (one per mechanic). -->
     <InternalsVisibleTo Include="Phantom.Relay.Lsfg" />
     <InternalsVisibleTo Include="Phantom.Relay.Lsfg.Tests" />
+    <!-- The decoder's GPU path end to end (its synthetic H.264 encoder uses the Media Foundation interop). -->
+    <InternalsVisibleTo Include="Phantom.Relay.Desktop.Tests" />
   </ItemGroup>
 
 </Project>

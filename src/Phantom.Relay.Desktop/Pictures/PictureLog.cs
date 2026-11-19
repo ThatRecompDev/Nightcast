@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Microsoft.Extensions.Logging;
+using Phantom.Relay.Profiles;
 
 namespace Phantom.Relay.Desktop.Pictures;
 
@@ -18,6 +19,12 @@ internal static partial class PictureLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Frame generation off, the stream plays without it: {Reason}")]
     public static partial void GenerationOff(this ILogger log, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Upscaling on the decoder's GPU: {Method}, {Width}x{Height} to {OutputWidth}x{OutputHeight}")]
+    public static partial void UpscaleOn(this ILogger log, UpscaleMethod method, int width, int height, int outputWidth, int outputHeight);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Method} off, the renderer upscales with FSR 1 instead: {Reason}")]
+    public static partial void UpscaleOff(this ILogger log, UpscaleMethod method, string reason);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "The decoder moved to the renderer's GPU (adapter 0x{Luid:X})")]
     public static partial void MovedToAdapter(this ILogger log, long luid);

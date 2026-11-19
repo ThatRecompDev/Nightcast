@@ -115,6 +115,15 @@ internal sealed class GeneratedPictures : IDisposable
         return _stage!.Process(surface, slice, _generated);
     }
 
+    /// <summary>The new picture as RGBA (the stage's own conversion of it), valid until the next picture.</summary>
+    public nint Picture => _stage!.Picture;
+
+    /// <summary>Generated frame <paramref name="index"/> (RGBA, the generator's), valid until the next picture.</summary>
+    public nint Generated(int index)
+    {
+        return _generated[index];
+    }
+
     /// <summary>Writes generated frame <paramref name="index"/> into <paramref name="nv12"/>, a slot of the shared ring.</summary>
     [HotPath]
     public bool Write(int index, nint nv12)

@@ -19,9 +19,11 @@ namespace Phantom.Relay.Desktop.Pictures;
 /// textures (<see cref="SharedSurfaceRing"/>) and publishes it (<see cref="GpuPictureSlots"/>) for the renderer, which
 /// opens the ring once. With frame generation on (<see cref="Use"/>), each new picture is published with the frames
 /// generated before it (<see cref="GeneratedPictures"/>) and a repeat is not published at all; the frame pacer then
-/// says which of them each refresh shows. When anything of it fails, the pictures go on being read back (or play without
+/// says which of them each refresh shows. Asked to upscale (<see cref="Scale"/>, Lossless Scaling's upscalers), it
+/// upscales each picture it publishes to the window's size (<see cref="UpscaledPictures"/>) into a ring made at that size,
+/// so the renderer draws it one to one. When anything of it fails, the pictures go on being read back (or play without
 /// frame generation), and <see cref="Report"/> says why. The ring is made again when the stream's size changes; an old
-/// ring is kept until the decoder is disposed, since the renderer may still be opening its handles.
+/// ring is kept a while (the last <see cref="MaxRetired"/>), since the renderer may still be opening its handles.
 /// </summary>
 internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer, IGpuPictureSource
 {
@@ -31,17 +33,23 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     /// <summary>The group being written, the group waiting and the picture on screen (a triple buffer without generation).</summary>
     private const int RingSlots = (2 * MaxGroup) + 1;
 
+    /// <summary>Old rings kept: the renderer opens only the newest, so two back are surely closed or never opened.</summary>
+    private const int MaxRetired = 2;
+
     private readonly TimeProvider _clock;
     private readonly ILogger _log;
     private readonly GpuPictureSlots _slots = new(RingSlots, MaxGroup, new NewestPicturePacer());
     private readonly List<SharedSurfaceRing> _retired = [];
     private readonly GeneratedPictures _frames;
+    private readonly UpscaledPictures _upscale;
     private MediaFoundationH264Decoder _decoder;
     private SharedSurfaceRing? _ring;
     private GpuPictureRing? _published;
     private string _path = GpuPictureReport.ReadBack;
     private FrameGeneration _wanted = FrameGeneration.Off;
     private FrameGeneration? _applied;
+    private PictureScale _wantedScale = PictureScale.None;
+    private bool _ringUpscaled;
     private long _offered;
     private bool _offerTaken;
     private string? _withdrawn;
@@ -56,6 +64,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         _clock = clock;
         _log = log;
         _frames = new GeneratedPictures(clock, log);
+        _upscale = new UpscaledPictures(log);
     }
 
     public string CodecId => _decoder.CodecId;
@@ -80,7 +89,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
                 generation = $"{GpuPictureReport.GenerationOff}: the pictures are read back (it runs on the GPU path only)";
             }
 
-            return new GpuPictureReport(Volatile.Read(ref _path), generation);
+            return new GpuPictureReport(Volatile.Read(ref _path), generation, DescribeUpscale());
         }
     }
 
@@ -92,6 +101,11 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     public void Use(FrameGeneration settings)
     {
         Volatile.Write(ref _wanted, settings);
+    }
+
+    public void Scale(PictureScale scale)
+    {
+        Volatile.Write(ref _wantedScale, scale);
     }
 
     public void Withdraw(string reason)
@@ -149,25 +163,32 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         width = _decoder.PictureWidth;
         height = _decoder.PictureHeight;
 
-        if (!_decoder.TryTakeSurface(out var surface, out var slice) || !EnsureRing(surface))
+        if (!_decoder.TryTakeSurface(out var surface, out var slice) || !Prepare(surface, width, height))
         {
             return false;
-        }
-
-        ApplyGeneration(width, height);
-
-        if (!_frames.IsOn)
-        {
-            return PublishDecoded(surface, slice, decodedAt, width, height);
         }
 
         // A repeat adds nothing the generated frames do not already show.
-        if (kind == PictureKind.Repeat)
+        if (_frames.IsOn && kind == PictureKind.Repeat)
         {
             return false;
         }
 
-        return PublishGenerated(surface, slice, decodedAt, rtpTimestamp, width, height);
+        BeginUpscale();
+        bool published;
+
+        if (_frames.IsOn)
+        {
+            published = PublishGenerated(surface, slice, decodedAt, rtpTimestamp, width, height);
+        }
+        else
+        {
+            published = PublishDecoded(surface, slice, decodedAt, width, height);
+        }
+
+        EndUpscale();
+
+        return published;
     }
 
     public bool TryTake(out GpuPicture picture)
@@ -188,6 +209,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     public void Dispose()
     {
         _frames.Dispose();
+        _upscale.Dispose();
         _decoder.Dispose();
         _ring?.Dispose();
 
@@ -208,7 +230,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
             return false;
         }
 
-        _ring!.Copy(slot, surface, slice);
+        WriteDecoded(slot, surface, slice);
         Add(slot, decodedAt, width, height, generated: false);
         _slots.Publish();
 
@@ -228,13 +250,67 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
                 break;
             }
 
-            _ = _frames.Write(index, _ring!.Texture(slot));
+            WriteGenerated(index, slot);
             Add(slot, decodedAt, width, height, generated: true);
         }
 
         _frames.Done();
 
         return PublishDecoded(surface, slice, decodedAt, width, height);
+    }
+
+    // The decoded picture into a slot: copied as it is, or upscaled (from the frame generation's RGBA of it when that runs).
+    [HotPath]
+    private void WriteDecoded(int slot, nint surface, uint slice)
+    {
+        var target = _ring!.Texture(slot);
+
+        if (!_upscale.IsOn)
+        {
+            _ring.Copy(slot, surface, slice);
+        }
+        else if (_frames.IsOn)
+        {
+            _ = _upscale.WriteRgba(_frames.Picture, target);
+        }
+        else
+        {
+            _ = _upscale.Write(surface, slice, target);
+        }
+    }
+
+    // A generated frame into a slot: converted to NV12 as it is, or upscaled.
+    [HotPath]
+    private void WriteGenerated(int index, int slot)
+    {
+        var target = _ring!.Texture(slot);
+
+        if (_upscale.IsOn)
+        {
+            _ = _upscale.WriteRgba(_frames.Generated(index), target);
+
+            return;
+        }
+
+        _ = _frames.Write(index, target);
+    }
+
+    [HotPath]
+    private void BeginUpscale()
+    {
+        if (_upscale.IsOn)
+        {
+            _upscale.Begin();
+        }
+    }
+
+    [HotPath]
+    private void EndUpscale()
+    {
+        if (_upscale.IsOn)
+        {
+            _upscale.Done();
+        }
     }
 
     // A free slot, once the decoder's queue waits on the GPU for the renderer's last read of it.
@@ -262,7 +338,63 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     private void Add(int slot, long decodedAt, int width, int height, bool generated)
     {
         var ready = _ring!.Signal();
+
+        // An upscaled picture is shown at the window's size (its slot may be a texel larger: NV12's even sizes).
+        if (_upscale.IsOn)
+        {
+            (width, height) = (_upscale.Width, _upscale.Height);
+        }
+
         _slots.Add(new GpuPicture(_generation, slot, ready, width, height, _decoder.PictureColour, decodedAt, generated));
+    }
+
+    // The upscaler, the ring and the frame generation as this picture needs them; false when the ring cannot be made.
+    private bool Prepare(nint surface, int width, int height)
+    {
+        ApplyUpscale(width, height);
+
+        if (!EnsureRing(surface))
+        {
+            return false;
+        }
+
+        if (_upscale.IsOn && !_ring!.IsWritableByVideoProcessor)
+        {
+            _upscale.Refuse("the GPU cannot write the shared NV12 textures with its video processor");
+
+            if (!EnsureRing(surface))
+            {
+                return false;
+            }
+        }
+
+        ApplyGeneration(width, height);
+
+        return true;
+    }
+
+    // The renderer's upscaling request, set up again when it or the picture's size changed.
+    private void ApplyUpscale(int width, int height)
+    {
+        var wanted = Volatile.Read(ref _wantedScale);
+
+        if (_upscale.Differs(wanted, width, height))
+        {
+            _upscale.Apply(wanted, _decoder.Device, width, height);
+        }
+    }
+
+    // What the upscaler does, or why it cannot: it needs the GPU path.
+    private string DescribeUpscale()
+    {
+        var wanted = Volatile.Read(ref _wantedScale);
+
+        if (!_sharing && wanted.IsOn)
+        {
+            return $"{wanted.Method.Label()} off: the pictures are read back (it runs on the GPU path only)";
+        }
+
+        return _upscale.Describe();
     }
 
     // The profile's frame generation, set up again when it or the picture's size changed.
@@ -324,15 +456,20 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         return true;
     }
 
-    // A ring the size of the decoder's surfaces: made at the first picture, and again when the stream's size changes.
+    // A ring the size of the decoder's surfaces, or of the upscaled picture's slots while upscaling: made at the first
+    // picture, and again when that size changes.
     private bool EnsureRing(nint surface)
     {
-        if (_ring is not null && _ring.Fits(surface))
+        var upscaled = _upscale.IsOn;
+
+        if (_ring is not null && upscaled == _ringUpscaled && Fits(surface))
         {
             return true;
         }
 
-        var ring = SharedSurfaceRing.TryCreateFor(_decoder.Device, RingSlots, surface, out var problem);
+        var ring = upscaled
+            ? SharedSurfaceRing.TryCreate(_decoder.Device, RingSlots, _upscale.SlotWidth, _upscale.SlotHeight, out var problem)
+            : SharedSurfaceRing.TryCreateFor(_decoder.Device, RingSlots, surface, out problem);
 
         if (ring is null)
         {
@@ -341,15 +478,38 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
             return false;
         }
 
-        if (_ring is not null)
-        {
-            _retired.Add(_ring);
-        }
-
-        _ring = ring;
+        Retire();
+        (_ring, _ringUpscaled) = (ring, upscaled);
         Share(ring);
 
         return true;
+    }
+
+    private bool Fits(nint surface)
+    {
+        if (_ringUpscaled)
+        {
+            return _ring!.Width == _upscale.SlotWidth && _ring.Height == _upscale.SlotHeight;
+        }
+
+        return _ring!.Fits(surface);
+    }
+
+    // The ring being replaced is kept a while; the oldest kept goes.
+    private void Retire()
+    {
+        if (_ring is null)
+        {
+            return;
+        }
+
+        _retired.Add(_ring);
+
+        if (_retired.Count > MaxRetired)
+        {
+            _retired[0].Dispose();
+            _retired.RemoveAt(0);
+        }
     }
 
     private void Share(SharedSurfaceRing ring)
@@ -373,6 +533,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     {
         _sharing = false;
         _frames.Dispose();
+        _upscale.Dispose();
         Volatile.Write(ref _path, $"{GpuPictureReport.ReadBack}: {reason}");
         _log.ReadBack(reason);
     }

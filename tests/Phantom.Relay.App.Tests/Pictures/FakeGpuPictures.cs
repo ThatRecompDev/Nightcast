@@ -5,7 +5,7 @@ using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.App.Tests.Pictures;
 
-/// <summary>A source of GPU pictures the test fills by hand; it notes the offer, the withdrawal and every release.</summary>
+/// <summary>A source of GPU pictures the test fills by hand; it notes the offer, the withdrawal, every scale asked and every release.</summary>
 public sealed class FakeGpuPictures : IGpuPictureSource
 {
     private readonly Queue<GpuPicture> _pictures = new();
@@ -30,6 +30,13 @@ public sealed class FakeGpuPictures : IGpuPictureSource
     public void Use(FrameGeneration settings)
     {
         Used = settings;
+    }
+
+    public List<PictureScale> Scales { get; } = [];
+
+    public void Scale(PictureScale scale)
+    {
+        Scales.Add(scale);
     }
 
     public void Withdraw(string reason)

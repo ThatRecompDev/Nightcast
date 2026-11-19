@@ -25,4 +25,8 @@
     <ProjectReference Include="../Phantom.Relay.Xbox/Phantom.Relay.Xbox.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Desktop.Tests" />
+  </ItemGroup>
+
 </Project>

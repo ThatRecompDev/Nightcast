@@ -17,6 +17,7 @@
     <Project Path="tests/Phantom.Relay.App.Tests/Phantom.Relay.App.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Architecture.Tests/Phantom.Relay.Architecture.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Audio.Tests/Phantom.Relay.Audio.Tests.csproj" />
+    <Project Path="tests/Phantom.Relay.Desktop.Tests/Phantom.Relay.Desktop.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Http.Bcl.Tests/Phantom.Relay.Http.Bcl.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Lsfg.Tests/Phantom.Relay.Lsfg.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Pads.Windows.Tests/Phantom.Relay.Pads.Windows.Tests.csproj" />

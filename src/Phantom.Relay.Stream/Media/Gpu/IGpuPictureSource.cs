@@ -33,6 +33,13 @@ public interface IGpuPictureSource
     /// </summary>
     void Use(FrameGeneration settings);
 
+    /// <summary>
+    /// Upscales the pictures where they are decoded, as <paramref name="scale"/> asks, from the next picture on (the
+    /// ring is then made at that size), or hands them over at their own size again (<see cref="PictureScale.None"/>).
+    /// It runs on the GPU path only, where the platform has the method; <see cref="Report"/> says what it does or why not.
+    /// </summary>
+    void Scale(PictureScale scale);
+
     /// <summary>The renderer cannot take the pictures on the GPU after all (it refused the ring): the decoder reads them back from its next picture on.</summary>
     void Withdraw(string reason);
 
