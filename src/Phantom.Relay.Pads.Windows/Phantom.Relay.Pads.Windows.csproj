@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- PlayStation pads (DualSense, DualSense Edge, DualShock 4) on Windows through the system's HID API, for the
+       engine's gamepad ports. Game-agnostic: it may move into the engine's Platform.Desktop. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Core" />
+    <PackageReference Include="Phantom.Engine.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Pads.Windows.Tests" />
+  </ItemGroup>
+
+</Project>
