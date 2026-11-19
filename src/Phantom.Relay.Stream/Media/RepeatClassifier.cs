@@ -9,7 +9,7 @@ namespace Phantom.Relay.Stream.Media;
 /// pictures a second whatever the game draws, so a 30 fps game's every other unit is a repeat: the console codes the same
 /// picture again, refined: about half the bytes of the new picture before it (measured on GTA VI). A unit is small at
 /// most <see cref="RepeatSettings.RepeatBytes"/> or at most <see cref="RepeatSettings.RepeatPercent"/> % of the unit
-/// before. Size alone is fooled by a quiet
+/// before (<see cref="RepeatSettings.HoldPercent"/> % once the half-rate rhythm is found). Size alone is fooled by a quiet
 /// scene, whose new pictures are small too, so the classifier follows the cadence:
 /// <list type="bullet">
 /// <item><b>Full</b> (the start): every unit is new. After <see cref="RepeatSettings.LockUnits"/> units in a row that
@@ -49,7 +49,7 @@ public sealed class RepeatClassifier
     [HotPath]
     public PictureKind Classify(int bytes, bool key)
     {
-        var small = !key && (bytes <= _settings.RepeatBytes || (long)bytes * RepeatSettings.Percent <= _previousBytes * _settings.RepeatPercent);
+        var small = !key && (bytes <= _settings.RepeatBytes || (long)bytes * RepeatSettings.Percent <= _previousBytes * SmallPercent());
         _previousBytes = bytes;
         PictureKind kind;
 
@@ -72,6 +72,17 @@ public sealed class RepeatClassifier
         }
 
         return kind;
+    }
+
+    // The share of the unit before that counts as small: strict to find the half-rate rhythm, looser to keep it.
+    private int SmallPercent()
+    {
+        if (Cadence == PictureCadence.Half)
+        {
+            return _settings.HoldPercent;
+        }
+
+        return _settings.RepeatPercent;
     }
 
     // Every unit is new until the sizes alternate long enough; the unit that completes the run is classed by the new rhythm.

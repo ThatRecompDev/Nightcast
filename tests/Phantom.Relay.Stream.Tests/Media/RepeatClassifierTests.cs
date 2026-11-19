@@ -39,6 +39,20 @@ public sealed class RepeatClassifierTests
     }
 
     [Fact]
+    public void Gta_vi_live_repeats_refined_up_to_two_thirds_keep_the_rhythm()
+    {
+        // Logged from the console on 2026-11-19: repeats at 60 to 67 % of the picture before.
+        int[] live = [22688, 37401, 22697, 37158, 22587, 36737, 22796, 36353, 22891, 38381, 22876, 38309, 25115, 38284, 25029, 37951, 24844, 37673, 24832, 37522, 24207, 36238];
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+
+        var kinds = Classify(classifier, live);
+
+        Assert.Equal(PictureCadence.Half, classifier.Cadence);
+        Assert.All(kinds.Skip(8).Where((_, index) => index % 2 == 0), kind => Assert.Equal(PictureKind.Repeat, kind));
+        Assert.Equal(7L, classifier.Repeats);
+    }
+
+    [Fact]
     public void A_60_fps_game_whose_sizes_wander_stays_at_full_rate()
     {
         int[] sizes = [40000, 31000, 42000, 30500, 39000, 33000, 41000, 29000, 38000, 32000, 43000, 30000];
