@@ -5,21 +5,21 @@
 
   <!-- Phantom.Engine, pinned to one version for every package. A new version lands in a commit of its own. -->
   <ItemGroup>
-    <PackageVersion Include="Phantom.Engine.Architecture" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Audio" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Audio.Sokol" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Build" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Content" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Core" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Graphics" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Graphics.Sokol" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Hosting" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Logging" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Media" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Media.Vpx" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Net" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Platform.Desktop" Version="0.83.2" />
-    <PackageVersion Include="Phantom.Engine.Testing" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Architecture" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Audio" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Audio.Sokol" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Build" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Content" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Core" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Graphics" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Graphics.Sokol" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Hosting" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Logging" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Media" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Media.Vpx" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Net" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Platform.Desktop" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Testing" Version="0.83.3-relay.1" />
   </ItemGroup>
 
   <!-- Central package versions. A package is added here by the commit whose code first needs it. -->
