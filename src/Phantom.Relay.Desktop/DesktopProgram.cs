@@ -46,7 +46,8 @@ namespace Phantom.Relay.Desktop;
 /// address), the console choice, then the stream in a resizable window with the H.264 decoder and the XInput pads.
 /// Closing the window or Escape stops the stream and the session. <c>--sign-out</c> forgets the kept account first;
 /// the bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
-/// <c>--twcc</c>) turn on what the probe found to work, all off without them.
+/// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
+/// <c>--no-feedback</c> turns it off.
 /// Tokens stay in the user's own store, never in the output.
 /// </summary>
 public static class DesktopProgram
@@ -57,6 +58,7 @@ public static class DesktopProgram
     public const int Refused = 3;
 
     private const string SignOutArgument = "--sign-out";
+    private const string NoFeedbackArgument = "--no-feedback";
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
 
@@ -65,12 +67,14 @@ public static class DesktopProgram
 
     public static async Task<int> Main(string[] args)
     {
-        if (!BitrateFeedbackArguments.TryParse(args, out var feedback, out string? wrong))
+        if (!BitrateFeedbackArguments.TryParse(args, out var asked, out string? wrong))
         {
-            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}");
+            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}");
 
             return Refused;
         }
+
+        var feedback = ChooseFeedback(asked, args.Contains(NoFeedbackArgument));
 
         using var cancellation = new CancellationTokenSource();
         Console.CancelKeyPress += (_, press) =>
@@ -102,6 +106,25 @@ public static class DesktopProgram
         var settings = SessionSettings.For(ProfileChoice.For(profiles, null).Stream.Resolution, clock);
 
         return StreamConsole(sessions, console, profiles, settings, feedback, clock);
+    }
+
+    /// <summary>
+    /// The switches given, else the recommended feedback (transport-cc: about 27 Mbit/s live where none got about 11);
+    /// <c>--no-feedback</c> turns all of it off.
+    /// </summary>
+    private static BitrateFeedback ChooseFeedback(BitrateFeedback asked, bool noFeedback)
+    {
+        if (noFeedback)
+        {
+            return BitrateFeedback.Off;
+        }
+
+        if (asked == BitrateFeedback.Off)
+        {
+            return BitrateFeedback.Recommended;
+        }
+
+        return asked;
     }
 
     /// <summary>Signs in and picks the console; null when there is none or the service refused.</summary>

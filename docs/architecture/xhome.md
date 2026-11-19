@@ -77,8 +77,22 @@ The received bitrate is the RTP payload (without RTP header and SRTP tag) a seco
 `StreamStats.VideoMegabitsPerSecond` and `AudioMegabitsPerSecond`, in the stats line, the block on screen and the
 window title when it fits; the probe prints it every second and the average, peak and average access unit at the end.
 
-**The live result is pending**: whether the console's answer echoes `b=`, `goog-remb`, `transport-cc` and the
-extension, and whether its bitrate moves, has not been seen yet.
+**Live result (2026-11-19, the owner's Series X, GTA VI at 1440p60, wired LAN, probe runs of 30 s each):**
+
+| Switches | Video Mbit/s (avg / peak) | Average access unit | Loss, keyframe requests |
+|---|---|---|---|
+| none | 10.8 / 12.7 | 22.8 KB | 0, 1 |
+| `--remb 5000` | 3.7 / 5.6, and the console dropped to **1280x720** | 7.8 KB | 0, 1 |
+| `--remb 80000` | 26.9 / 29.4 | 56.6 KB | 0, 1 |
+| `--bandwidth-line 80000` | 10.7 / 11.6 (no `b=` echoed: ignored) | 22.5 KB | 0, 1 |
+| `--twcc` | 27.1 / 29.6 | 57.2 KB | 0, 1 |
+| `--remb 200000` | 26.6 / 29.4 | 59.4 KB | 301 packets, 16 |
+| all three | 27.9 / 29.9 | 58.9 KB | 0, 1 |
+
+The answer keeps `goog-remb`, `transport-cc` and the transport-wide extension (id 3, as offered); the console's
+sender follows REMB both ways (its resolution too) and runs its own controller on transport feedback. The service's
+ceiling for this tier is about 30 Mbit/s. The desktop now defaults to transport-cc alone (`BitrateFeedback.Recommended`:
+it adapts, where a fixed REMB claim does not); `--no-feedback` restores the old ~11 Mbit/s.
 
 ## Confirmed live
 
@@ -125,8 +139,6 @@ Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
 - whether a pad other than pad 0 needs its own `gamepadChanged` on the control channel before its first report (the
   stream sends one);
 - the vibration report's layout;
-- whether the console reads a bandwidth line, REMB or transport-wide feedback at all, and which raises its video
-  bitrate above the 14 Mbit/s seen at 1440p60 (see "Bitrate feedback");
 - the client description messages after the handshake, and whether the console needs all of them;
 - whether the engine's H.264 decoder (openh264) takes the console's Main-profile stream at 1440p60 as fast as the
   latency budget needs; Constrained Baseline is the fallback the console also offers;
