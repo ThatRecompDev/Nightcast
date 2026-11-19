@@ -34,6 +34,12 @@ public sealed record StreamStats
 
     public TimeSpan DecodeWorst { get; init; }
 
+    /// <summary>
+    /// The CPU's part of handing each decoded picture to the renderer, averaged over the last second: the read-back to
+    /// the CPU, or with the pictures left on the GPU the queueing of their copy. Part of <see cref="DecodeAverage"/>.
+    /// </summary>
+    public TimeSpan HandOffAverage { get; init; }
+
     public long PacketsLost { get; init; }
 
     public long KeyframeRequests { get; init; }

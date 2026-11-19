@@ -41,7 +41,8 @@ public sealed class StreamStatsMeter
             {
                 FramesReceivedPerSecond = (counters.FramesReceived - _last.FramesReceived) / seconds,
                 FramesDecodedPerSecond = (counters.FramesDecoded - _last.FramesDecoded) / seconds,
-                DecodeAverage = Average(counters),
+                DecodeAverage = Average(counters.DecodeTotal - _last.DecodeTotal, counters),
+                HandOffAverage = Average(counters.HandOffTotal - _last.HandOffTotal, counters),
             };
         }
 
@@ -52,7 +53,8 @@ public sealed class StreamStatsMeter
         return next;
     }
 
-    private TimeSpan Average(in StreamCounters counters)
+    // A time spent since the last reading, per unit decoded since.
+    private TimeSpan Average(TimeSpan spent, in StreamCounters counters)
     {
         long units = counters.UnitsDecoded - _last.UnitsDecoded;
 
@@ -61,6 +63,6 @@ public sealed class StreamStatsMeter
             return TimeSpan.Zero;
         }
 
-        return (counters.DecodeTotal - _last.DecodeTotal) / units;
+        return spent / units;
     }
 }

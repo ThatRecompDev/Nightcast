@@ -16,6 +16,7 @@ public sealed class PictureMailbox
     private const int Third = 2;
 
     private readonly VideoFrame[] _frames = [new(), new(), new()];
+    private readonly long[] _readyAt = new long[Third + 1];
     private int _back;
     private int _front = 1;
     private int _middle = Third;
@@ -29,9 +30,16 @@ public sealed class PictureMailbox
     /// <summary>True once the renderer has taken a picture.</summary>
     public bool HasPicture { get; private set; }
 
-    /// <summary>The decode thread's side: hands over the picture just written and takes the free one.</summary>
-    public void Publish()
+    /// <summary>When the render thread's current picture was decoded (a timestamp of the stream's clock).</summary>
+    public long FrontReadyAt => _readyAt[_front];
+
+    /// <summary>
+    /// The decode thread's side: hands over the picture just written, decoded at <paramref name="readyAt"/> (a
+    /// timestamp of the stream's clock), and takes the free one.
+    /// </summary>
+    public void Publish(long readyAt)
     {
+        _readyAt[_back] = readyAt;
         int previous = Interlocked.Exchange(ref _middle, _back | Fresh);
         _back = previous & IndexMask;
     }

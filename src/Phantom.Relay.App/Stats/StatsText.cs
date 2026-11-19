@@ -2,14 +2,17 @@
 
 using System.Globalization;
 using Phantom.Relay.Stream;
+using Phantom.Relay.Stream.Media.Gpu;
 using Phantom.Relay.Stream.Setup;
 
 namespace Phantom.Relay.App.Stats;
 
 /// <summary>
 /// The window's title for a stats snapshot: the app's name and where the stream is, and with the stats shown the
-/// picture's size, frames received and decoded per second, the decode time (average and worst), the path's round
-/// trip, the DTLS time, losses, keyframe requests and pad reports. Numbers in the invariant culture.
+/// picture's size, frames received and decoded per second, the decode time (average and worst) and of it the CPU's
+/// hand-off of the picture to the renderer, the time from decode to present (average and worst) and the render
+/// thread's CPU time for the picture, how the pictures come (on the GPU or read back) and what frame generation does,
+/// the path's round trip, the DTLS time, losses, keyframe requests and pad reports. Numbers in the invariant culture.
 /// </summary>
 public static class StatsText
 {
@@ -32,11 +35,11 @@ public static class StatsText
     }
 
     /// <summary>The title with the stats.</summary>
-    public static string WithStats(StreamStats stats)
+    public static string WithStats(StreamStats stats, PresentStats present, GpuPictureReport pictures)
     {
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
+            $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)} | to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)} | {pictures.Path} | {pictures.FrameGeneration} | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
     }
 
     private static string Milliseconds(TimeSpan? span)

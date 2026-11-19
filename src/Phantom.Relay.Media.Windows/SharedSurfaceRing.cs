@@ -37,6 +37,9 @@ public sealed unsafe class SharedSurfaceRing : IDisposable
     private nint _readerHandle;
     private ulong _written;
 
+    // The decoder's texture last checked against the slots' size.
+    private nint _fitted;
+
     private SharedSurfaceRing(nint device, int count, int width, int height)
     {
         _device = device;
@@ -88,6 +91,43 @@ public sealed unsafe class SharedSurfaceRing : IDisposable
         }
 
         return ring;
+    }
+
+    /// <summary>
+    /// A ring of <paramref name="count"/> slots the size of the decoder's surface <paramref name="surface"/> (an
+    /// ID3D11Texture2D on <paramref name="device"/>), as <see cref="TryCreate"/>.
+    /// </summary>
+    public static SharedSurfaceRing? TryCreateFor(nint device, int count, nint surface, out string? problem)
+    {
+        var (width, height) = SizeOf(surface);
+        var ring = TryCreate(device, count, width, height, out problem);
+
+        if (ring is not null)
+        {
+            ring._fitted = surface;
+        }
+
+        return ring;
+    }
+
+    /// <summary>Whether the decoder's surface <paramref name="surface"/> has the slots' size; read again only when it is another texture.</summary>
+    public bool Fits(nint surface)
+    {
+        if (surface == _fitted)
+        {
+            return true;
+        }
+
+        var (width, height) = SizeOf(surface);
+
+        if (width != Width || height != Height)
+        {
+            return false;
+        }
+
+        _fitted = surface;
+
+        return true;
     }
 
     /// <summary>The NT handle of slot <paramref name="slot"/>'s texture; the ring keeps it open.</summary>
@@ -158,6 +198,15 @@ public sealed unsafe class SharedSurfaceRing : IDisposable
         ComObjects.Free(_contextApi);
         ComObjects.Release(ref _context);
         ComObjects.Release(ref _device);
+    }
+
+    private static (int Width, int Height) SizeOf(nint texture)
+    {
+        var api = ComObjects.Wrap<ID3D11Texture2D>(new StrategyBasedComWrappers(), texture);
+        api.GetDesc(out var description);
+        ComObjects.Free(api);
+
+        return ((int)description.Width, (int)description.Height);
     }
 
     private static void Close(ref nint handle)

@@ -1,0 +1,19 @@
+// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+
+namespace Phantom.Relay.Stream.Media.Gpu;
+
+/// <summary>
+/// How the pictures reach the screen, for the stats: the path (left on the GPU, or read back to the CPU and why) and
+/// what frame generation does (its mode and GPU time, or why it is off). Replaced whole when either changes.
+/// </summary>
+public sealed record GpuPictureReport(string Path, string FrameGeneration)
+{
+    public const string ReadBack = "CPU read-back";
+
+    public const string ZeroCopy = "GPU zero-copy";
+
+    public const string GenerationOff = "LSFG off";
+
+    /// <summary>Before the renderer offered its device: read back, no frame generation.</summary>
+    public static GpuPictureReport Idle { get; } = new(ReadBack, GenerationOff);
+}

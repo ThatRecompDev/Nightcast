@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using Phantom.Engine.Media.Video;
+using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.Stream.Media;
 
@@ -9,12 +10,16 @@ namespace Phantom.Relay.Stream.Media;
 /// Decodes access units on a thread of its own, so the network loop never waits on the decoder: units are queued as
 /// they complete, and the worker times each decode. The decoder is the head's choice (openh264 in software today, a
 /// hardware decoder later) and stays the head's to dispose. Each picture goes straight into the
-/// <see cref="PictureMailbox"/>; the counters are safe to read from any thread.
+/// <see cref="PictureMailbox"/>, read back to the CPU; a decoder that is also an <see cref="IGpuPictureProducer"/>
+/// hands its pictures to the renderer on the GPU instead while it shares. The worker times the hand-off, the CPU's
+/// part of getting a decoded picture to the renderer (the read-back, or the GPU copy's queueing). The counters are
+/// safe to read from any thread.
 /// </summary>
 public sealed class DecodeWorker : IDisposable
 {
     private readonly BlockingCollection<(byte[] Unit, uint Timestamp)> _queue = [];
     private readonly IVideoDecoder _decoder;
+    private readonly IGpuPictureProducer? _gpu;
     private readonly PictureMailbox _mailbox;
     private readonly TimeProvider _clock;
     private readonly Thread _thread;
@@ -22,6 +27,7 @@ public sealed class DecodeWorker : IDisposable
     private long _pictures;
     private long _decoded;
     private long _decodeTicks;
+    private long _handOffTicks;
     private long _worstTicks;
     private long _windowWorstTicks;
     private int _deepestQueue;
@@ -33,6 +39,7 @@ public sealed class DecodeWorker : IDisposable
     public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, TimeProvider clock)
     {
         _decoder = decoder;
+        _gpu = decoder as IGpuPictureProducer;
         _mailbox = mailbox;
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "Relay video decode" };
@@ -50,8 +57,11 @@ public sealed class DecodeWorker : IDisposable
 
     public int DeepestQueue => Volatile.Read(ref _deepestQueue);
 
-    /// <summary>The time every decode took, added up.</summary>
+    /// <summary>The time every decode took, added up, the hand-off included.</summary>
     public TimeSpan DecodeTotal => Duration(Interlocked.Read(ref _decodeTicks));
+
+    /// <summary>The time every hand-off of a decoded picture to the renderer took on this thread, added up.</summary>
+    public TimeSpan HandOffTotal => Duration(Interlocked.Read(ref _handOffTicks));
 
     /// <summary>Why the worker stopped decoding, when the decoder threw; null while it runs.</summary>
     public string? Problem => Volatile.Read(ref _problem);
@@ -132,24 +142,50 @@ public sealed class DecodeWorker : IDisposable
         foreach (var (unit, timestamp) in _queue.GetConsumingEnumerable())
         {
             long start = _clock.GetTimestamp();
+            _gpu?.Prepare();
             _decoder.Decode(unit, ReadOnlySpan<byte>.Empty, timestamp);
 
-            // Each picture goes straight to the mailbox: the renderer shows the newest.
-            while (_decoder.TakePicture(_mailbox.Back))
+            long decoded = _clock.GetTimestamp();
+            HandOff(decoded);
+
+            long end = _clock.GetTimestamp();
+            Interlocked.Add(ref _handOffTicks, end - decoded);
+            Count(end - start);
+        }
+    }
+
+    // The decoded picture to the renderer: on the GPU while the decoder shares, else read back into the mailbox, where
+    // the renderer shows the newest.
+    private void HandOff(long decoded)
+    {
+        if (_gpu is not null && _gpu.IsSharing)
+        {
+            if (_gpu.Publish(decoded, out var width, out var height))
             {
-                Volatile.Write(ref _width, _mailbox.Back.Width);
-                Volatile.Write(ref _height, _mailbox.Back.Height);
-                _mailbox.Publish();
+                Volatile.Write(ref _width, width);
+                Volatile.Write(ref _height, height);
                 Interlocked.Increment(ref _pictures);
             }
 
-            long spent = _clock.GetTimestamp() - start;
-            Interlocked.Add(ref _decodeTicks, spent);
-            Interlocked.Increment(ref _decoded);
-
-            Interlocked.Exchange(ref _worstTicks, Math.Max(Interlocked.Read(ref _worstTicks), spent));
-            Interlocked.Exchange(ref _windowWorstTicks, Math.Max(Interlocked.Read(ref _windowWorstTicks), spent));
+            return;
         }
+
+        while (_decoder.TakePicture(_mailbox.Back))
+        {
+            Volatile.Write(ref _width, _mailbox.Back.Width);
+            Volatile.Write(ref _height, _mailbox.Back.Height);
+            _mailbox.Publish(decoded);
+            Interlocked.Increment(ref _pictures);
+        }
+    }
+
+    private void Count(long spent)
+    {
+        Interlocked.Add(ref _decodeTicks, spent);
+        Interlocked.Increment(ref _decoded);
+
+        Interlocked.Exchange(ref _worstTicks, Math.Max(Interlocked.Read(ref _worstTicks), spent));
+        Interlocked.Exchange(ref _windowWorstTicks, Math.Max(Interlocked.Read(ref _windowWorstTicks), spent));
     }
 
     private TimeSpan Duration(long ticks)

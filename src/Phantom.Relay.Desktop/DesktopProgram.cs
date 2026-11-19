@@ -23,6 +23,7 @@ using Phantom.Relay.App;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
+using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Media.Windows;
 using Phantom.Relay.Pads.Windows;
@@ -117,8 +118,12 @@ public static class DesktopProgram
     /// <summary>Streams the console in the window until it closes, then stops the stream, the sound and the pads.</summary>
     private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, TimeProvider clock)
     {
+        // The log: the engine's ring, written to the console's error stream after every frame.
+        using var logs = new RingLoggerFactory(LogOptions.Default, clock);
+        var pump = new LogPump(logs, ImmutableArray.Create<ILogSink>(new TextLogSink(Console.Error)));
+
         uint? hostAddress = LocalAddress.Find();
-        using var decoder = OpenDecoder(clock, out string? problem);
+        using var decoder = OpenDecoder(clock, logs, out string? problem);
 
         if (hostAddress is null || decoder is null)
         {
@@ -126,10 +131,6 @@ public static class DesktopProgram
 
             return Refused;
         }
-
-        // The log: the engine's ring, written to the console's error stream after every frame.
-        using var logs = new RingLoggerFactory(LogOptions.Default, clock);
-        var pump = new LogPump(logs, ImmutableArray.Create<ILogSink>(new TextLogSink(Console.Error)));
 
         // The sound: the console's Opus through the jitter buffer into the system's output.
         using var speakers = new SokolAudioDevice(new Logger<SokolAudioDevice>(logs));
@@ -149,7 +150,7 @@ public static class DesktopProgram
         Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}. F3 shows the stats; Escape ends.");
         connection.Start(console.ServerId, settings);
 
-        RunWindow(connection, ProfileChoice.For(profiles, null), pump);
+        RunWindow(connection, ProfileChoice.For(profiles, null), pump, clock);
         connection.Stop();
         speakers.Stop();
         pump.Flush();
@@ -158,10 +159,11 @@ public static class DesktopProgram
     }
 
     /// <summary>
-    /// The fastest H.264 decoder there is: on Windows Media Foundation's on the GPU (DXVA, low-latency mode: about 6 ms a
-    /// 1440p picture with its read-back, where openh264 took 8 on average and 41 at a keyframe), else openh264.
+    /// The fastest H.264 decoder there is: on Windows Media Foundation's on the GPU (DXVA, low-latency mode: about a
+    /// millisecond a 1440p picture, where openh264 took 8 on average and 41 at a keyframe), its pictures left on the GPU
+    /// for the window to draw once it offers its adapter (else read back, 4.2 ms more), else openh264.
     /// </summary>
-    private static IVideoDecoder? OpenDecoder(TimeProvider clock, out string? problem)
+    private static IVideoDecoder? OpenDecoder(TimeProvider clock, ILoggerFactory logs, out string? problem)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -171,13 +173,24 @@ public static class DesktopProgram
             {
                 Console.WriteLine(DecoderLine(gpu.IsHardwareAccelerated, gpu.FallbackReason));
 
-                return gpu;
+                return Shared(gpu, clock, logs);
             }
         }
 
         Console.WriteLine("Decoding with openh264 in software.");
 
         return H264Decoder.TryOpen(out problem);
+    }
+
+    /// <summary>A decoder on the GPU shares its pictures with the window's device; one in software reads them back.</summary>
+    private static IVideoDecoder Shared(MediaFoundationH264Decoder decoder, TimeProvider clock, ILoggerFactory logs)
+    {
+        if (!decoder.IsHardwareAccelerated)
+        {
+            return decoder;
+        }
+
+        return new SharedPictureDecoder(decoder, clock, logs.CreateLogger<SharedPictureDecoder>());
     }
 
     private static string DecoderLine(bool hardware, string? fallback)
@@ -209,35 +222,35 @@ public static class DesktopProgram
     /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
     /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
     /// </summary>
-    private static void RunWindow(StreamConnection connection, StreamProfile profile, LogPump pump)
+    private static void RunWindow(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock)
     {
         if (OperatingSystem.IsWindows())
         {
-            RunWindowWithWindowsPads(connection, profile, pump);
+            RunWindowWithWindowsPads(connection, profile, pump, clock);
 
             return;
         }
 
-        Run(connection, profile, new NoGamepads(), pump);
+        Run(connection, profile, new NoGamepads(), pump, clock);
     }
 
     [SupportedOSPlatform("windows")]
-    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile, LogPump pump)
+    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock)
     {
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), pump);
+        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), pump, clock);
         playStation.Stop();
     }
 
     /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame.</summary>
-    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, LogPump pump)
+    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, LogPump pump, TimeProvider clock)
     {
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, clock);
         var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);

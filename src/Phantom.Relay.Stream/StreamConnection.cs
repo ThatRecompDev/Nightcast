@@ -10,6 +10,7 @@ using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.Stream.Logging;
 using Phantom.Relay.Stream.Media;
+using Phantom.Relay.Stream.Media.Gpu;
 using Phantom.Relay.Stream.Network;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.Dtls;
@@ -93,8 +94,11 @@ public sealed class StreamConnection : IDisposable
         _profile = ProfileChoice.For(profiles, null);
     }
 
-    /// <summary>The newest decoded picture, for the render thread.</summary>
+    /// <summary>The newest decoded picture read back to the CPU, for the render thread.</summary>
     public PictureMailbox Pictures => _pictures;
+
+    /// <summary>The decoder's pictures left on the GPU, when the head's decoder can share them with the renderer; else null.</summary>
+    public IGpuPictureSource? GpuPictures => _decoder as IGpuPictureSource;
 
     /// <summary>The latest snapshot; a new one replaces it on every state change and once a second.</summary>
     public StreamStats Stats => Volatile.Read(ref _stats);
@@ -364,6 +368,7 @@ public sealed class StreamConnection : IDisposable
             video.Pictures,
             video.Decoded,
             video.DecodeTotal,
+            video.HandOffTotal,
             video.TakeWindowWorst(),
             media?.Lost ?? 0,
             media?.KeyframeRequests ?? 0,
