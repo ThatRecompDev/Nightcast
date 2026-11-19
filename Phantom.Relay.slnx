@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/Phantom.Relay.Architecture.Tests/Phantom.Relay.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>

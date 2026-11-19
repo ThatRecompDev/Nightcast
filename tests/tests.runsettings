@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Applied to every `dotnet test` in this repository (RunSettingsFilePath in Directory.Build.props). The fast suite
+     takes seconds; a session still running after a minute has hung, and is ended rather than left to stall. -->
+<RunSettings>
+  <RunConfiguration>
+    <TestSessionTimeout>60000</TestSessionTimeout>
+  </RunConfiguration>
+</RunSettings>

@@ -1,0 +1,22 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <!-- Phantom.Engine, pinned to one version for every package. A new version lands in a commit of its own. -->
+  <ItemGroup>
+    <PackageVersion Include="Phantom.Engine.Architecture" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Build" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Content" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Core" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Testing" Version="0.83.2" />
+  </ItemGroup>
+
+  <!-- Central package versions. A package is added here by the commit whose code first needs it. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+</Project>

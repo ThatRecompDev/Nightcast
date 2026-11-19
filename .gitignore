@@ -1,0 +1,13 @@
+bin/
+obj/
+/artifacts/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+
+# Secrets and local state: account tokens live in the user's store, never in the repository.
+*.token
+.env
+.env.*

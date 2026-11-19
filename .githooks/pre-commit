@@ -1,0 +1,38 @@
+#!/bin/sh
+# Copyright (c) 2026 Phantom.Relay. All rights reserved.
+# pre-commit: the commit is made by the project identity, signed, and adds no secret, token or absolute user path.
+# The rules are in docs/how-we-work.md (Phantom.Engine's rulebook, sections 1 and 3).
+set -u
+
+expected_name="ThatMapleDev"
+
+fail() {
+    printf 'pre-commit: %s\n' "$1" >&2
+
+    exit 1
+}
+
+if [ "$(git config user.name)" != "$expected_name" ]; then
+    fail "commit as $expected_name (git config user.name)"
+fi
+
+if [ "$(git config --bool commit.gpgsign)" != "true" ]; then
+    fail "commits are signed (git config commit.gpgsign true)"
+fi
+
+added=$(git diff --cached --diff-filter=AM -U0 | grep '^+' | grep -v '^+++')
+
+if printf '%s\n' "$added" | grep -qiE '[A-Z]:[\\/]Users[\\/]|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z]'; then
+    fail "an absolute user path is being added"
+fi
+
+if printf '%s\n' "$added" | grep -qE 'BEGIN (OPENSSH|RSA|EC) PRIVATE KEY'; then
+    fail "a private key is being added"
+fi
+
+# An account token is a long base64url run after a bearer or token field.
+if printf '%s\n' "$added" | grep -qiE '(bearer |"(access_token|refresh_token|gsToken|Token)" *: *")[A-Za-z0-9._~+/=-]{40,}'; then
+    fail "an account token is being added"
+fi
+
+exit 0

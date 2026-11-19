@@ -1,0 +1,18 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <ArtifactsPath Condition="'$(ArtifactsPath)' == ''">$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <PhantomEngineRepositoryRoot>$(MSBuildThisFileDirectory)</PhantomEngineRepositoryRoot>
+    <!-- The fast suite takes seconds: a test session still running after a minute has hung. -->
+    <RunSettingsFilePath>$(MSBuildThisFileDirectory)tests/tests.runsettings</RunSettingsFilePath>
+    <Authors>ThatMapleDev</Authors>
+    <Product>Phantom.Relay</Product>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Phantom.Engine's build policy: compiler, analyzer and code-style rules as errors. -->
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Build" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
