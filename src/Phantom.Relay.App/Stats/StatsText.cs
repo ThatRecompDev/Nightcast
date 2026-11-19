@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Text;
+using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Media.Gpu;
@@ -21,9 +22,15 @@ public static class StatsText
     private const string NotMeasured = "-";
     private const string FullRate = "every picture new";
     private const string HalfRate = "every other repeated";
+    private const string Ellipsis = "...";
+    private const string ControllerHands = "controller";
+    private const string KeyboardMouseHands = "keyboard and mouse";
 
     /// <summary>The longest title sokol shows: its 128-byte buffer less the terminator.</summary>
     public const int MaxTitleBytes = 127;
+
+    /// <summary>The longest line of the block on screen, in characters.</summary>
+    public const int MaxLineCharacters = 64;
 
     /// <summary>The title without the stats: the name, then the state unless it streams, and why it failed.</summary>
     public static string Plain(StreamStats stats)
@@ -82,6 +89,77 @@ public static class StatsText
         return string.Create(
             CultureInfo.InvariantCulture,
             $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded ({stats.NewPicturesPerSecond:F0} new, {stats.RepeatedPicturesPerSecond:F0} repeated, {Cadence(stats.Cadence)}) | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)} | to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)} | {pictures.Path} | {pictures.FrameGeneration} | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
+    }
+
+    /// <summary>
+    /// The stats as the short lines of the block on screen (<see cref="StatsOverlay"/>): where the stream is and the
+    /// picture's size; the frames in and decoded; the decode; the time to screen; how the pictures come; frame
+    /// generation; the path's times; the counts; and which hands the console's pad follows. A line longer than
+    /// <see cref="MaxLineCharacters"/> is cut with an ellipsis (the full text is in the log line).
+    /// </summary>
+    public static string[] Lines(StreamStats stats, PresentStats present, GpuPictureReport pictures, PadSource source)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+        ArgumentNullException.ThrowIfNull(pictures);
+
+        var invariant = CultureInfo.InvariantCulture;
+
+        return
+        [
+            Shorten(Heading(stats)),
+            string.Create(invariant, $"{stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded: {stats.NewPicturesPerSecond:F0} new, {stats.RepeatedPicturesPerSecond:F0} repeated ({Cadence(stats.Cadence)})"),
+            string.Create(invariant, $"decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)}"),
+            string.Create(invariant, $"to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)}"),
+            Shorten(pictures.Path),
+            Shorten(pictures.FrameGeneration),
+            string.Create(invariant, $"RTT {Milliseconds(stats.IceRoundTrip)}, DTLS {Milliseconds(stats.DtlsTime)}"),
+            string.Create(invariant, $"lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}"),
+            string.Create(invariant, $"input: {Hands(source)}"),
+        ];
+    }
+
+    /// <summary>The block's first line: the state and, once a picture came, its size; a failure with its reason.</summary>
+    private static string Heading(StreamStats stats)
+    {
+        if (stats.State == StreamState.Failed)
+        {
+            return $"{stats.State}: {stats.FailureReason}";
+        }
+
+        if (stats.Width <= 0)
+        {
+            return stats.State.ToString();
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{stats.State} {stats.Width}x{stats.Height}");
+    }
+
+    /// <summary><paramref name="line"/> cut to <see cref="MaxLineCharacters"/>, its end an ellipsis, never in a pair.</summary>
+    private static string Shorten(string line)
+    {
+        if (line.Length <= MaxLineCharacters)
+        {
+            return line;
+        }
+
+        int length = MaxLineCharacters - Ellipsis.Length;
+
+        if (char.IsHighSurrogate(line[length - 1]))
+        {
+            length--;
+        }
+
+        return string.Concat(line.AsSpan(0, length), Ellipsis);
+    }
+
+    private static string Hands(PadSource source)
+    {
+        if (source == PadSource.KeyboardMouse)
+        {
+            return KeyboardMouseHands;
+        }
+
+        return ControllerHands;
     }
 
     /// <summary>The picture path without the read-back's reason, which the full line and the log carry.</summary>

@@ -2,6 +2,7 @@
 
 using Phantom.Engine.Hosting.Input;
 using Phantom.Relay.Profiles;
+using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Xbox.Input;
 
 namespace Phantom.Relay.App.Input;
@@ -13,6 +14,9 @@ namespace Phantom.Relay.App.Input;
 /// </summary>
 public interface IPadComposer
 {
+    /// <summary>Which hands the pad follows now: the controller, or keyboard and mouse.</summary>
+    PadSource Source { get; }
+
     XboxPadState Compose(InputFrame input, float elapsedSeconds);
 
     /// <summary>Plays under <paramref name="profile"/> from the next frame on.</summary>

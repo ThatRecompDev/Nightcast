@@ -2,10 +2,12 @@
 
 using System.Numerics;
 using Microsoft.Extensions.Logging;
+using Phantom.Engine.Core;
 using Phantom.Engine.Graphics.Devices;
 using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Media.Rendering;
+using Phantom.Engine.Ui.Text;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Logging;
 using Phantom.Relay.App.Pictures;
@@ -26,7 +28,8 @@ namespace Phantom.Relay.App;
 /// Each new picture's time from decode to present and each frame's CPU time for its picture go to the stats
 /// (<see cref="PresentMeter"/>). It plays under the running game's profile, switching when the console names another
 /// title; a keyboard and mouse profile locks the mouse to the window while it has the focus (F10 frees or takes it).
-/// F3 shows the stats, short in the window's title and in full in the log, rebuilt only when a new snapshot arrives. Escape closes the window, except
+/// F3 shows the stats: as a small block over the window's top-left corner (<see cref="StatsOverlay"/>), short in the
+/// window's title and in full in the log, each rebuilt only when a new snapshot arrives. Escape closes the window, except
 /// while keyboard and mouse play, when it is the game's and Shift+Escape closes it; closing it stops the stream, and
 /// with it the session on the console.
 /// </summary>
@@ -45,6 +48,7 @@ public sealed class StreamApplication : IApplication
     private readonly GpuPicturePresenter? _gpu;
     private readonly TimeProvider _clock;
     private readonly PresentMeter _meter = new();
+    private readonly StatsOverlay _overlay;
     private readonly ILogger<StreamApplication> _log;
 
     private TimeSpan _now;
@@ -55,7 +59,7 @@ public sealed class StreamApplication : IApplication
     private StreamProfile? _profile;
     private bool _captureMouse;
 
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, TimeProvider clock, ILogger<StreamApplication> log)
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, TimeProvider clock, ILogger<StreamApplication> log)
     {
         _log = log;
         _clock = clock;
@@ -68,6 +72,7 @@ public sealed class StreamApplication : IApplication
 
         // Pictures read back, and those left on the GPU where the decoder can share them.
         _renderer = new MovieRenderer(device);
+        _overlay = new StatsOverlay(device, window, fonts, log);
         var shared = stream.GpuPictures;
 
         if (shared is not null)
@@ -80,6 +85,7 @@ public sealed class StreamApplication : IApplication
     {
         _renderer.Initialize(PassTarget.Frame, BlendMode.None);
         _gpu?.Initialize();
+        _overlay.Initialize();
         ShowTitle();
     }
 
@@ -105,6 +111,7 @@ public sealed class StreamApplication : IApplication
     public void Cleanup()
     {
         _gpu?.Cleanup();
+        _overlay.Cleanup();
         _renderer.Cleanup();
         _stream.Stop();
     }
@@ -124,6 +131,7 @@ public sealed class StreamApplication : IApplication
         long begun = _clock.GetTimestamp();
         DrawPicture(PictureLetterbox.Of(_window.Width, _window.Height));
         long drawn = _clock.GetTimestamp();
+        DrawStats();
         _device.EndPass();
         _device.Commit();
 
@@ -171,6 +179,16 @@ public sealed class StreamApplication : IApplication
         }
     }
 
+    /// <summary>The stats' block over the picture while F3 shows them (outside the picture's CPU time).</summary>
+    [HotPath]
+    private void DrawStats()
+    {
+        if (_showStats)
+        {
+            _overlay.Draw();
+        }
+    }
+
     private long ReadyAt()
     {
         if (_onGpu && _gpu is not null)
@@ -198,6 +216,7 @@ public sealed class StreamApplication : IApplication
             {
                 _showStats = !_showStats;
                 _shownStats = null;
+                _overlay.Clear();
             }
             else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
             {
@@ -296,6 +315,7 @@ public sealed class StreamApplication : IApplication
         {
             var report = Report();
             _window.SetTitle(StatsText.Title(stats, present, report));
+            _overlay.Show(StatsText.Lines(stats, present, report, _pads.Source));
 
             if (_log.IsEnabled(LogLevel.Information))
             {

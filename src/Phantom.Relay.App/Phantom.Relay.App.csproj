@@ -8,6 +8,7 @@
     <PackageReference Include="Phantom.Engine.Graphics" />
     <PackageReference Include="Phantom.Engine.Hosting" />
     <PackageReference Include="Phantom.Engine.Media" />
+    <PackageReference Include="Phantom.Engine.Text" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 

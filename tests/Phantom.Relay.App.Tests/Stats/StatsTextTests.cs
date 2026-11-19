@@ -3,6 +3,7 @@
 using System.Globalization;
 using System.Text;
 using Phantom.Relay.App.Stats;
+using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Media.Gpu;
@@ -81,6 +82,63 @@ public sealed class StatsTextTests
         Assert.Equal("Phantom.Relay", StatsText.Plain(Streaming));
         Assert.Equal("Phantom.Relay: Connecting", StatsText.Plain(StreamStats.Idle with { State = StreamState.Connecting }));
         Assert.Equal("Phantom.Relay: failed: ICE found no path to the console", StatsText.Plain(StreamStats.Idle with { State = StreamState.Failed, FailureReason = "ICE found no path to the console" }));
+    }
+
+    [Fact]
+    public void The_block_on_screen_reads_the_same_on_a_dutch_machine()
+    {
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = new CultureInfo("nl-NL");
+
+        try
+        {
+            var report = new GpuPictureReport(GpuPictureReport.ZeroCopy, "LSFG x2 (quality) 0.8 ms");
+
+            string[] lines = StatsText.Lines(Streaming, Present, report, PadSource.KeyboardMouse);
+
+            Assert.Equal(
+                [
+                    "Streaming 2560x1440",
+                    "60 fps in, 59 decoded: 30 new, 30 repeated (every other repeated)",
+                    "decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms",
+                    "to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms",
+                    "GPU zero-copy",
+                    "LSFG x2 (quality) 0.8 ms",
+                    "RTT 0.4 ms, DTLS 73.0 ms",
+                    "lost 2, PLI 1, pad reports 40",
+                    "input: keyboard and mouse",
+                ],
+                lines);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
+    }
+
+    [Fact]
+    public void The_blocks_long_lines_are_cut_and_its_first_line_says_why_it_failed()
+    {
+        var failed = StreamStats.Idle with { State = StreamState.Failed, FailureReason = "ICE found no path to the console" };
+        var report = new GpuPictureReport($"{GpuPictureReport.ReadBack}: {new string('x', 100)}", GpuPictureReport.GenerationOff);
+
+        string[] lines = StatsText.Lines(failed, default, report, PadSource.Controller);
+
+        Assert.Equal("Failed: ICE found no path to the console", lines[0]);
+        Assert.Equal(StatsText.MaxLineCharacters, lines[4].Length);
+        Assert.StartsWith(GpuPictureReport.ReadBack, lines[4], StringComparison.Ordinal);
+        Assert.EndsWith("...", lines[4], StringComparison.Ordinal);
+        Assert.Equal("input: controller", lines[^1]);
+        Assert.All(lines, line => Assert.True(line.Length <= StatsText.MaxLineCharacters, line));
+    }
+
+    [Fact]
+    public void Before_a_picture_the_blocks_first_line_is_the_state_alone()
+    {
+        string[] lines = StatsText.Lines(StreamStats.Idle with { State = StreamState.Connecting }, default, GpuPictureReport.Idle, PadSource.Controller);
+
+        Assert.Equal("Connecting", lines[0]);
+        Assert.Equal("RTT -, DTLS -", lines[6]);
     }
 
     [Fact]

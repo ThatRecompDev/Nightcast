@@ -20,6 +20,7 @@
     <PackageVersion Include="Phantom.Engine.Net" Version="0.83.3-relay.1" />
     <PackageVersion Include="Phantom.Engine.Platform.Desktop" Version="0.83.3-relay.1" />
     <PackageVersion Include="Phantom.Engine.Testing" Version="0.83.3-relay.1" />
+    <PackageVersion Include="Phantom.Engine.Text" Version="0.83.3-relay.1" />
   </ItemGroup>
 
   <!-- Central package versions. A package is added here by the commit whose code first needs it. -->

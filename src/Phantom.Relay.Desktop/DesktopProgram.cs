@@ -17,8 +17,10 @@ using Phantom.Engine.Media.Video;
 using Phantom.Engine.Media.Vpx;
 using Phantom.Engine.Net.Transport;
 using Phantom.Engine.Net.Transport.Udp;
+using Phantom.Engine.Platform.Desktop.Fonts;
 using Phantom.Engine.Platform.Desktop.Gamepads;
 using Phantom.Engine.Platform.Desktop.Storage;
+using Phantom.Engine.Ui.Text;
 using Phantom.Relay.App;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Sound;
@@ -231,7 +233,7 @@ public static class DesktopProgram
             return;
         }
 
-        Run(connection, profile, new NoGamepads(), pump, clock, log);
+        Run(connection, profile, new NoGamepads(), new NoSystemFonts(), pump, clock, log);
     }
 
     [SupportedOSPlatform("windows")]
@@ -240,17 +242,17 @@ public static class DesktopProgram
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), pump, clock, log);
+        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), new WindowsSystemFonts(), pump, clock, log);
         playStation.Stop();
     }
 
-    /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame.</summary>
-    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame and the stats drawn in a font of <paramref name="fonts"/>.</summary>
+    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, ISystemFonts fonts, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, clock, log);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, clock, log);
         var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);

@@ -18,6 +18,8 @@ public sealed class ProfilePadComposer : IPadComposer
         _composer = new PadComposer(profile);
     }
 
+    public PadSource Source => _composer.Source;
+
     [HotPath]
     public XboxPadState Compose(InputFrame input, float elapsedSeconds)
     {
