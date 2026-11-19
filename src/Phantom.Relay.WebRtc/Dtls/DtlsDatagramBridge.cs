@@ -28,6 +28,12 @@ public sealed class DtlsDatagramBridge : DatagramTransport, IDisposable
 
     public bool IsClosed => _closed;
 
+    /// <summary>
+    /// True when a datagram waits. After the handshake the loop reads DTLS records only then, because BouncyCastle's
+    /// DtlsTransport treats a wait of 0 ms as "wait forever", which would block the loop.
+    /// </summary>
+    public bool HasIncoming => !_incoming.IsEmpty;
+
     /// <summary>The loop's side: a DTLS datagram that arrived.</summary>
     public void Deliver(ReadOnlySpan<byte> datagram)
     {

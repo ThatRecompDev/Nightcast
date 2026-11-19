@@ -32,8 +32,11 @@ public sealed class LiveIce : ILiveIce, IDisposable
 
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
 
-    /// <summary>Longer than one keep-alive interval, so the round trip is measured again on the open path.</summary>
-    private static readonly TimeSpan ListenAfterConnect = TimeSpan.FromSeconds(2.5);
+    /// <summary>
+    /// Long enough for the channels to open and the console to start streaming, and longer than one keep-alive
+    /// interval, so the round trip is measured again on the open path.
+    /// </summary>
+    private static readonly TimeSpan ListenAfterConnect = TimeSpan.FromSeconds(6);
 
     private readonly IXHomeSessionService _sessions;
     private readonly IDatagramTransport _transport;
@@ -44,6 +47,9 @@ public sealed class LiveIce : ILiveIce, IDisposable
     private readonly int[] _counts = new int[CountKinds];
 
     private DtlsDatagramBridge? _bridge;
+    private ConsoleChannels? _channels;
+    private long _channelsStartedAt;
+    private TimeSpan? _firstRtp;
 
     public LiveIce(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, TimeProvider clock, IRandomSource random)
     {
@@ -78,6 +84,7 @@ public sealed class LiveIce : ILiveIce, IDisposable
         {
             outcome = RunDtls(agent, certificate, DtlsFingerprint.Read(answer), outcome, cancellation);
             Pump(agent, ListenAfterConnect, static () => false, cancellation);
+            outcome = outcome with { Channels = _channels?.Report(_firstRtp) };
         }
 
         return outcome with { LatestRoundTrip = agent.RoundTrip, DtlsDatagrams = _counts[Dtls], RtpDatagrams = _counts[Rtp], OtherDatagrams = _counts[Other] };
@@ -117,6 +124,11 @@ public sealed class LiveIce : ILiveIce, IDisposable
 
             return outcome with { DtlsResult = $"failed: {reason}", DtlsElapsed = elapsed };
         }
+
+        // The session is up: the data channels run over it from this loop.
+        _channels = new ConsoleChannels(handshake.Result, _bridge, _clock, _random);
+        _channels.Open();
+        _channelsStartedAt = _clock.GetTimestamp();
 
         return outcome with { DtlsResult = "connected", DtlsElapsed = elapsed, SrtpProfile = client.Profile?.ToString(), CipherSuite = client.CipherSuite };
     }
@@ -173,6 +185,9 @@ public sealed class LiveIce : ILiveIce, IDisposable
 
             _ring.Release();
         }
+
+        _channels?.Pump();
+        SendDtls(agent);
     }
 
     private void SendDtls(IceAgent agent)
@@ -200,6 +215,11 @@ public sealed class LiveIce : ILiveIce, IDisposable
         else if (DatagramClass.IsRtp(payload))
         {
             _counts[Rtp]++;
+
+            if (_firstRtp is null && _channels is not null)
+            {
+                _firstRtp = _clock.GetElapsedTime(_channelsStartedAt);
+            }
         }
         else
         {

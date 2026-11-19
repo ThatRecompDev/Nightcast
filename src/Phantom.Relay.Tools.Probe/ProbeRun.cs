@@ -178,6 +178,25 @@ public sealed class ProbeRun
         }
 
         _output.WriteLine($"  received after ICE: {outcome.DtlsDatagrams} DTLS, {outcome.RtpDatagrams} RTP/RTCP, {outcome.OtherDatagrams} other datagrams");
+        ReportChannels(outcome.Channels);
+    }
+
+    private void ReportChannels(ChannelReport? channels)
+    {
+        if (channels is null)
+        {
+            return;
+        }
+
+        _output.WriteLine($"  SCTP: {channels.Association}; channels open: {string.Join(", ", channels.Opened)}");
+        _output.WriteLine($"  messages: {channels.MessagesSent} sent, {channels.MessagesReceived} received");
+
+        foreach (string kind in channels.ConsoleKinds)
+        {
+            _output.WriteLine($"    console -> {kind}");
+        }
+
+        _output.WriteLine($"  first video/audio packet: {Milliseconds(channels.FirstRtpAfter)} after the channels started");
     }
 
     private static string Milliseconds(TimeSpan? span)

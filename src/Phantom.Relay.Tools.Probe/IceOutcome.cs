@@ -30,4 +30,7 @@ public sealed record IceOutcome(
     public string? SrtpProfile { get; init; }
 
     public int CipherSuite { get; init; }
+
+    /// <summary>The data channels, when DTLS connected.</summary>
+    public ChannelReport? Channels { get; init; }
 }
