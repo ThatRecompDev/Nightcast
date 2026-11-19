@@ -13,23 +13,26 @@ namespace Phantom.Relay.Stream.Media;
 /// value has room both ways). A new picture of a quiet scene can be as small; the cadence, not the size alone, decides
 /// those.
 /// </param>
-/// <param name="RepeatShare">
-/// A unit at most this fraction (1 / it) of the unit before it is small too, whatever its size: the console's repeats of
-/// a 30 fps game proved larger than <paramref name="RepeatBytes"/> live (2026-11-19, GTA VI counted 60 new a second),
-/// while still far smaller than the new picture they follow.
+/// <param name="RepeatPercent">
+/// A unit at most this percentage of the unit before it is small too, whatever its size. Measured live on GTA VI at
+/// 30 fps (2026-11-19): the console does not skip a repeat, it refines the same picture, so the units alternate about
+/// 40 KB (the new picture) and 20 KB (its repeat), the repeat at 40 to 55 % of the unit before, steadily.
 /// </param>
 /// <param name="LockUnits">Units in a row that must alternate small and large before the half-rate cadence is trusted.</param>
 /// <param name="UnlockUnits">
 /// Large units in a row, where the half-rate cadence expects repeats, before it is dropped (the game now draws every
 /// picture). A single one is a slip of the rhythm (a picture the console sent late) and moves it on by one.
 /// </param>
-public sealed record RepeatSettings(int RepeatBytes, int RepeatShare, int LockUnits, int UnlockUnits)
+public sealed record RepeatSettings(int RepeatBytes, int RepeatPercent, int LockUnits, int UnlockUnits)
 {
     /// <summary>A repeat is at most 2 KB: several times a repeat's size, a twentieth of a new picture in motion.</summary>
     public const int StandardRepeatBytes = 2048;
 
-    /// <summary>A quarter of the unit before: a new picture's size swings far less from one to the next.</summary>
-    public const int StandardRepeatShare = 4;
+    /// <summary>65 %: above the measured repeats (at most 55 %), below a 60 fps game's swing from one picture to the next.</summary>
+    public const int StandardRepeatPercent = 65;
+
+    /// <summary>The whole, for <see cref="RepeatPercent"/>.</summary>
+    public const int Percent = 100;
 
     /// <summary>Four pairs, 133 ms at 60 a second.</summary>
     public const int StandardLockUnits = 8;
@@ -37,5 +40,5 @@ public sealed record RepeatSettings(int RepeatBytes, int RepeatShare, int LockUn
     /// <summary>Three, 100 ms at 60 a second.</summary>
     public const int StandardUnlockUnits = 3;
 
-    public static RepeatSettings Standard { get; } = new(StandardRepeatBytes, StandardRepeatShare, StandardLockUnits, StandardUnlockUnits);
+    public static RepeatSettings Standard { get; } = new(StandardRepeatBytes, StandardRepeatPercent, StandardLockUnits, StandardUnlockUnits);
 }

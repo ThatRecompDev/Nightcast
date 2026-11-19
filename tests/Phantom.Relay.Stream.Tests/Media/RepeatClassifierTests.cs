@@ -25,6 +25,32 @@ public sealed class RepeatClassifierTests
     }
 
     [Fact]
+    public void Gta_vi_live_whose_repeats_are_refinements_at_half_the_size_locks_to_half_rate()
+    {
+        // Logged from the console on 2026-11-19: GTA VI at 30 fps, the new picture then its refined repeat.
+        int[] live = [22800, 43875, 22750, 44028, 22835, 45252, 22978, 43484, 21039, 42853, 23540, 42678, 19927, 41080, 19989, 40968, 21617, 43806, 13760, 41265];
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+
+        var kinds = Classify(classifier, live);
+
+        Assert.Equal(PictureCadence.Half, classifier.Cadence);
+        Assert.All(kinds.Skip(8).Where((_, index) => index % 2 == 1), kind => Assert.Equal(PictureKind.New, kind));
+        Assert.All(kinds.Skip(8).Where((_, index) => index % 2 == 0), kind => Assert.Equal(PictureKind.Repeat, kind));
+    }
+
+    [Fact]
+    public void A_60_fps_game_whose_sizes_wander_stays_at_full_rate()
+    {
+        int[] sizes = [40000, 31000, 42000, 30500, 39000, 33000, 41000, 29000, 38000, 32000, 43000, 30000];
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+
+        var kinds = Classify(classifier, sizes);
+
+        Assert.Equal(PictureCadence.Full, classifier.Cadence);
+        Assert.All(kinds, kind => Assert.Equal(PictureKind.New, kind));
+    }
+
+    [Fact]
     public void A_quiet_scene_in_a_30_fps_game_keeps_its_new_pictures_new()
     {
         var classifier = new RepeatClassifier(RepeatSettings.Standard);
