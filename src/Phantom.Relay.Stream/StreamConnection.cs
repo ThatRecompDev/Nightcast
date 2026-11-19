@@ -382,6 +382,20 @@ public sealed class StreamConnection : IDisposable
         var stats = _meter.Measure(Stats, in counters) with { IceRoundTrip = link.Ice.RoundTrip };
         Publish(stats);
         _log.PictureCadence(stats.NewPicturesPerSecond, stats.RepeatedPicturesPerSecond, stats.Cadence);
+        LogUnitSizes(video);
+    }
+
+    /// <summary>The latest access units' sizes, once a second: how the console codes a repeat, read from a live game.</summary>
+    private void LogUnitSizes(DecodeWorker video)
+    {
+        if (!_log.IsEnabled(LogLevel.Information))
+        {
+            return;
+        }
+
+        Span<int> sizes = stackalloc int[DecodeWorker.SizeHistory];
+        int count = video.RecentSizes(sizes);
+        _log.UnitSizes(string.Join(' ', sizes[..count].ToArray()));
     }
 
     /// <summary>A keep-alive goes out unless the last is still on its way; a refused one is logged, not fatal.</summary>

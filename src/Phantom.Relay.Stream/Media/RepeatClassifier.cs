@@ -7,7 +7,9 @@ namespace Phantom.Relay.Stream.Media;
 /// <summary>
 /// Tells, for each access unit, whether it carries a new picture or repeats the one before. The console streams 60
 /// pictures a second whatever the game draws, so a 30 fps game's every other unit is a repeat: a P-frame with every
-/// macroblock skipped, a few hundred bytes, where a new picture is tens of kilobytes. Size alone is fooled by a quiet
+/// macroblock skipped, a few hundred bytes, where a new picture is tens of kilobytes. A unit is small at most
+/// <see cref="RepeatSettings.RepeatBytes"/> or at most a <see cref="RepeatSettings.RepeatShare"/>th of the unit before
+/// (the console's repeats can be larger than a skipped frame, yet stay far below the picture they follow). Size alone is fooled by a quiet
 /// scene, whose new pictures are small too, so the classifier follows the cadence:
 /// <list type="bullet">
 /// <item><b>Full</b> (the start): every unit is new. After <see cref="RepeatSettings.LockUnits"/> units in a row that
@@ -28,6 +30,7 @@ public sealed class RepeatClassifier
     private bool _nextIsNewPhase;
     private bool _slipped;
     private int _breaks;
+    private long _previousBytes;
 
     public RepeatClassifier(RepeatSettings settings)
     {
@@ -46,7 +49,8 @@ public sealed class RepeatClassifier
     [HotPath]
     public PictureKind Classify(int bytes, bool key)
     {
-        var small = !key && bytes <= _settings.RepeatBytes;
+        var small = !key && (bytes <= _settings.RepeatBytes || (long)bytes * _settings.RepeatShare <= _previousBytes);
+        _previousBytes = bytes;
         PictureKind kind;
 
         if (Cadence == PictureCadence.Half)

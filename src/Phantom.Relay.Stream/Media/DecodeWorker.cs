@@ -24,6 +24,8 @@ public sealed class DecodeWorker : IDisposable
     private readonly TimeProvider _clock;
     private readonly RepeatClassifier _repeats = new(RepeatSettings.Standard);
     private readonly Thread _thread;
+    private readonly int[] _sizes = new int[SizeHistory];
+    private int _sizesWritten;
 
     private long _pictures;
     private long _decoded;
@@ -48,6 +50,9 @@ public sealed class DecodeWorker : IDisposable
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "Relay video decode" };
     }
+
+    /// <summary>How many of the latest access units' sizes are kept for the log (<see cref="RecentSizes"/>).</summary>
+    public const int SizeHistory = 12;
 
     /// <summary>Pictures published to the mailbox.</summary>
     public long Pictures => Interlocked.Read(ref _pictures);
@@ -193,9 +198,30 @@ public sealed class DecodeWorker : IDisposable
         }
     }
 
-    // New or repeat, by the unit's size and the cadence; counted for the stats.
+    /// <summary>
+    /// The sizes in bytes of the latest access units, oldest first, into <paramref name="sizes"/> (at least
+    /// <see cref="SizeHistory"/> long); how many there are. For the log: read while the worker writes, a size may be a
+    /// unit newer than its neighbours.
+    /// </summary>
+    public int RecentSizes(Span<int> sizes)
+    {
+        int written = Volatile.Read(ref _sizesWritten);
+        int count = Math.Min(written, SizeHistory);
+
+        for (int index = 0; index < count; index++)
+        {
+            sizes[index] = Volatile.Read(ref _sizes[(written - count + index) % SizeHistory]);
+        }
+
+        return count;
+    }
+
+    // New or repeat, by the unit's size and the cadence; counted for the stats, the size kept for the log.
     private PictureKind Classify(int bytes, bool key)
     {
+        Volatile.Write(ref _sizes[_sizesWritten % SizeHistory], bytes);
+        Volatile.Write(ref _sizesWritten, _sizesWritten + 1);
+
         var kind = _repeats.Classify(bytes, key);
         Volatile.Write(ref _cadence, (int)_repeats.Cadence);
 

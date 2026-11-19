@@ -23,6 +23,9 @@ public static partial class StreamLog
     [LoggerMessage(Level = LogLevel.Debug, Message = "Pictures: {New:F0} new and {Repeated:F0} repeated a second, cadence {Cadence}")]
     public static partial void PictureCadence(this ILogger log, double @new, double repeated, PictureCadence cadence);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Latest access units, bytes: {Sizes}")]
+    public static partial void UnitSizes(this ILogger log, string sizes);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stopping the session failed: {Reason}")]
     public static partial void StopRefused(this ILogger log, string reason);
 }
