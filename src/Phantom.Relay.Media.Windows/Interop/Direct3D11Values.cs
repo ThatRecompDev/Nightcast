@@ -21,6 +21,9 @@ internal static class Direct3D11Values
     /// <summary>DXGI_FORMAT_R8_UNORM.</summary>
     public const uint R8Format = 61;
 
+    /// <summary>DXGI_FORMAT_R16_FLOAT.</summary>
+    public const uint R16FloatFormat = 54;
+
     /// <summary>D3D11_USAGE_DEFAULT: GPU read and write.</summary>
     public const uint DefaultUsage = 0;
 

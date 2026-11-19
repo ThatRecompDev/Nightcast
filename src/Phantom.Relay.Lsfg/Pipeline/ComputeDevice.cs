@@ -17,6 +17,9 @@ internal sealed unsafe class ComputeDevice : IDisposable
     private const int MaxViews = 16;
     private const int MaxSamplers = 2;
 
+    // ClearUnorderedAccessViewFloat's four values, one per component (stackalloc is zeroed).
+    private const int ClearComponents = 4;
+
     private readonly ID3D11Device _deviceApi;
     private readonly ID3D11DeviceContext _contextApi;
     private nint _device;
@@ -79,6 +82,28 @@ internal sealed unsafe class ComputeDevice : IDisposable
         }
 
         return GpuTexture.Wrap(this, texture, width, height, format, writable);
+    }
+
+    /// <summary>A shader view of a 2D texture the caller owns, read as <paramref name="format"/>; 0 when D3D11 refuses it.</summary>
+    public nint CreateView(nint texture, uint format)
+    {
+        var description = new ShaderResourceViewDescription
+        {
+            Format = format,
+            ViewDimension = Direct3D11Values.ShaderResourceTexture2D,
+            MipLevels = 1,
+        };
+
+        _ = _deviceApi.CreateShaderResourceView(texture, in description, out var view);
+
+        return view;
+    }
+
+    /// <summary>Sets every texel of a writable texture to zero, on the GPU.</summary>
+    public void Clear(GpuTexture texture)
+    {
+        var zero = stackalloc float[ClearComponents];
+        _contextApi.ClearUnorderedAccessViewFloat(texture.Output, zero);
     }
 
     /// <summary>A compute shader made from compiled bytecode (never compiled here); 0 when D3D11 refuses it.</summary>

@@ -43,6 +43,23 @@ internal sealed unsafe class D3D11TestDevice : IDisposable
         return Create(width, height, MediaFoundationValues.Nv12Format, Direct3D11Values.BindDecoder | Direct3D11Values.BindShaderResource, planes, width);
     }
 
+    /// <summary>An NV12 texture a video processor writes (render target) and a renderer reads, as a slot of the decoder's shared ring.</summary>
+    public nint CreateNv12Target(int width, int height)
+    {
+        var description = new Texture2DDescription { Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 1, Format = MediaFoundationValues.Nv12Format, SampleCount = 1, BindFlags = Direct3D11Values.BindRenderTarget | Direct3D11Values.BindShaderResource };
+        var result = _deviceApi.CreateTexture2D(in description, 0, out var texture);
+        Assert.True(result >= 0, $"CreateTexture2D failed (0x{result:X8})");
+        _textures.Add(texture);
+
+        return texture;
+    }
+
+    /// <summary>Copies one texture into another of the same size and format, on the GPU.</summary>
+    public void Copy(nint destination, nint source)
+    {
+        _contextApi.CopyResource(destination, source);
+    }
+
     /// <summary>An R8G8B8A8 texture's pixels, through a staging copy.</summary>
     public byte[] ReadRgba(nint texture, int width, int height)
     {

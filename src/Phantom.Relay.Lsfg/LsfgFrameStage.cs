@@ -43,6 +43,9 @@ public sealed class LsfgFrameStage : IDisposable
 
     public LsfgSettings Settings => _generator.Settings;
 
+    /// <summary>The last new picture as RGBA (the conversion <see cref="Process"/> made), valid until the next picture.</summary>
+    public nint Picture => _toRgba.Output;
+
     /// <summary>The GPU time of the last picture whose time came back, in milliseconds; 0 before any.</summary>
     public double LastGpuMilliseconds { get; private set; }
 

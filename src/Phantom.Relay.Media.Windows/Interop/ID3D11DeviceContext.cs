@@ -122,7 +122,8 @@ internal unsafe partial interface ID3D11DeviceContext
 
     void ClearUnorderedAccessViewUint();
 
-    void ClearUnorderedAccessViewFloat();
+    [PreserveSig]
+    void ClearUnorderedAccessViewFloat(nint view, float* values);
 
     void ClearDepthStencilView();
 

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Microsoft.Extensions.Logging;
+using Phantom.Relay.Lsfg.Upscaling;
 
 namespace Phantom.Relay.Lsfg.Logging;
 
@@ -24,4 +25,10 @@ public static partial class LsfgLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Frame generation unavailable: {Reason}")]
     public static partial void Unavailable(this ILogger log, string reason);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Lossless upscaler ready: {Kind} (network {Level}), {InputWidth}x{InputHeight} to {OutputWidth}x{OutputHeight}, {Passes} passes")]
+    public static partial void UpscalerReady(this ILogger log, LosslessUpscalerKind kind, int level, int inputWidth, int inputHeight, int outputWidth, int outputHeight, int passes);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Lossless upscaler unavailable: {Reason}")]
+    public static partial void UpscalerUnavailable(this ILogger log, string reason);
 }
