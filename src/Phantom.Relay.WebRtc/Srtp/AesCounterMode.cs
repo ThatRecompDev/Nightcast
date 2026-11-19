@@ -43,13 +43,8 @@ public sealed class AesCounterMode
         for (int offset = 0; offset < data.Length; offset += SrtpFormat.BlockLength)
         {
             _aes.ProcessBlock(_counter, _keystream);
-            var chunk = data.Slice(offset, Math.Min(SrtpFormat.BlockLength, data.Length - offset));
-
-            for (int i = 0; i < chunk.Length; i++)
-            {
-                chunk[i] ^= _keystream[i];
-            }
-
+            int count = Math.Min(SrtpFormat.BlockLength, data.Length - offset);
+            SrtpBytes.Xor(data[offset..], _keystream.AsSpan(0, count));
             block++;
             BinaryPrimitives.WriteUInt32BigEndian(counterWord, block);
         }
