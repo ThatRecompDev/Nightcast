@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+﻿// Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Numerics;
 using Phantom.Engine.Hosting.Gamepads;
@@ -78,7 +78,9 @@ public sealed class PadComposerTests
         var pads = new TestPads();
         pads.Hold(Key.W);
         var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
-        composer.Compose(pads.Frame, Frame);
+        pads.Compose(composer, Frame);
+        Assert.Equal(PadSource.KeyboardMouse, composer.Source);
+
         pads.Release(Key.W);
         var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.South, new Vector2(0f, 0.8f), Vector2.Zero, 0f));
 
@@ -90,19 +92,44 @@ public sealed class PadComposerTests
     }
 
     [Fact]
-    public void A_frame_using_both_keeps_the_source()
+    public void The_controller_wins_a_frame_where_both_are_used()
     {
         var pads = new TestPads();
-        pads.Hold(Key.W);
-        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
-        composer.Compose(pads.Frame, Frame);
         var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.South, Vector2.Zero, Vector2.Zero, 0f));
+        pads.Hold(Key.W);
+        frame.Inject(new InputEvent(InputEventKind.PointerMoved) { Delta = new Vector2(8f, 0f) });
+        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
 
         var pad = composer.Compose(frame, Frame);
 
-        Assert.Equal(PadSource.KeyboardMouse, composer.Source);
-        Assert.Equal(XboxButtons.None, pad.Buttons);
-        Assert.Equal(1f, pad.LeftY);
+        Assert.Equal(PadSource.Controller, composer.Source);
+        Assert.Equal(XboxButtons.A, pad.Buttons);
+        Assert.Equal(0f, pad.LeftY);
+    }
+
+    [Fact]
+    public void A_mouse_jitter_does_not_take_the_pad()
+    {
+        var pads = new TestPads();
+        var frame = pads.Frame;
+        frame.Inject(new InputEvent(InputEventKind.PointerMoved) { Delta = new Vector2(1f, 0f) });
+        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
+
+        composer.Compose(frame, Frame);
+
+        Assert.Equal(PadSource.Controller, composer.Source);
+    }
+
+    [Fact]
+    public void Without_keyboard_and_mouse_in_the_profile_the_keys_never_take_the_pad()
+    {
+        var pads = new TestPads();
+        pads.Hold(Key.W);
+        var composer = new PadComposer(StreamProfile.Default);
+
+        pads.Compose(composer, Frame);
+
+        Assert.Equal(PadSource.Controller, composer.Source);
     }
 
     [Fact]
@@ -111,7 +138,9 @@ public sealed class PadComposerTests
         var pads = new TestPads();
         pads.Hold(Key.W);
         var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
-        composer.Compose(pads.Frame, Frame);
+        pads.Compose(composer, Frame);
+        Assert.Equal(PadSource.KeyboardMouse, composer.Source);
+
         pads.Release(Key.W);
         var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.None, new Vector2(0.1f, 0f), Vector2.Zero, 0.05f));
 

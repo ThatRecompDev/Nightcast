@@ -11,10 +11,10 @@ namespace Phantom.Relay.Profiles.Input;
 /// Everything between the player's hands and the pad the console reads, one input frame at a time, under one
 /// <see cref="StreamProfile"/>: the physical pad in <see cref="Slot"/> (<see cref="PhysicalPad"/>, under the profile's
 /// <see cref="PadSettings"/>) or keyboard and mouse (<see cref="KeyboardMouseMapper"/>, the pad at rest unless the
-/// profile switches them on). The console follows one of them, never a mix (<see cref="Source"/>): keyboard and mouse
-/// from the moment they are used, the controller again from the moment it is (<see cref="PadActivity"/>), so a
-/// connected pad's resting stick or a drifting one never fights the mouse. A frame in which both are used leaves the
-/// source as it was. A window that lost focus has no keys or mouse buttons held (the engine lets them go); the mouse's
+/// profile switches them on). The console follows one of them, never a mix (<see cref="Source"/>): the controller while
+/// it is used (<see cref="PadActivity"/>, past drift), keyboard and mouse from a fresh act on them
+/// (<see cref="KeyboardMouseActivity"/>) until the controller is used again. The controller wins a frame where both
+/// are, so a held key or a jittering mouse never locks it out, and a resting or drifting stick never fights the mouse. A window that lost focus has no keys or mouse buttons held (the engine lets them go); the mouse's
 /// stick is centred at once. When to send it is <see cref="PadReportPolicy"/>'s. Made once per profile; a frame
 /// allocates nothing.
 /// </summary>
@@ -22,6 +22,7 @@ public sealed class PadComposer
 {
     private readonly PhysicalPad _pad;
     private readonly KeyboardMouseMapper _keyboardMouse;
+    private readonly bool _keyboardMouseEnabled;
 
     public PadComposer(StreamProfile profile)
     {
@@ -29,6 +30,7 @@ public sealed class PadComposer
 
         _pad = new PhysicalPad(profile.Pad);
         _keyboardMouse = new KeyboardMouseMapper(profile.KeyboardMouse);
+        _keyboardMouseEnabled = profile.KeyboardMouse.Enabled;
     }
 
     /// <summary>The engine's pad slot played; null (the default) plays the first connected one.</summary>
@@ -50,7 +52,7 @@ public sealed class PadComposer
 
         var pad = _pad.Read(frame.Gamepads, Slot);
         var keyboardMouse = _keyboardMouse.Map(frame, elapsedSeconds);
-        Follow(in pad, in keyboardMouse);
+        Follow(in pad, frame);
 
         if (Source == PadSource.KeyboardMouse)
         {
@@ -60,20 +62,20 @@ public sealed class PadComposer
         return pad;
     }
 
-    /// <summary>The source switches to the hands used this frame, unless both or neither were.</summary>
+    /// <summary>
+    /// A controller in use takes the pad (it wins a frame where both are used); otherwise a fresh act on keyboard or
+    /// mouse does, when the profile plays them. Neither leaves the source as it was.
+    /// </summary>
     [HotPath]
-    private void Follow(in XboxPadState pad, in XboxPadState keyboardMouse)
+    private void Follow(in XboxPadState pad, InputFrame frame)
     {
-        bool padUsed = PadActivity.IsUsed(in pad, PadActivity.ControllerThreshold);
-        bool keyboardMouseUsed = PadActivity.IsUsed(in keyboardMouse, 0f);
-
-        if (keyboardMouseUsed && !padUsed)
-        {
-            Source = PadSource.KeyboardMouse;
-        }
-        else if (padUsed && !keyboardMouseUsed)
+        if (PadActivity.IsUsed(in pad, PadActivity.ControllerThreshold))
         {
             Source = PadSource.Controller;
+        }
+        else if (_keyboardMouseEnabled && KeyboardMouseActivity.Acted(frame))
+        {
+            Source = PadSource.KeyboardMouse;
         }
     }
 }

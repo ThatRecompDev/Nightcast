@@ -5,6 +5,8 @@ using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Gamepads;
 using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Testing.Hosting;
+using Phantom.Relay.Profiles.Input;
+using Phantom.Relay.Xbox.Input;
 
 namespace Phantom.Relay.Profiles.Tests.Input;
 
@@ -16,11 +18,12 @@ public sealed class TestPads : IGamepadSource
 {
     private readonly GamepadState[] _pads = new GamepadState[InputLimits.DefaultGamepads];
     private readonly ApplicationDriver _driver;
+    private Action<InputFrame>? _during;
 
     public TestPads()
     {
         Frame = new InputFrame(InputLimits.Default);
-        _driver = new ApplicationDriver(new RecordingApplication(null), Frame, this);
+        _driver = new ApplicationDriver(new RecordingApplication(frame => _during?.Invoke(frame)), Frame, this);
     }
 
     public InputFrame Frame { get; }
@@ -37,6 +40,20 @@ public sealed class TestPads : IGamepadSource
         _driver.Frame(0d);
 
         return Frame;
+    }
+
+    /// <summary>
+    /// Runs one frame and composes inside it, as the app does: the events injected since show in the frame's
+    /// <see cref="InputFrame.Events"/> only while it runs.
+    /// </summary>
+    public XboxPadState Compose(PadComposer composer, float seconds)
+    {
+        XboxPadState pad = default;
+        _during = frame => pad = composer.Compose(frame, seconds);
+        _driver.Frame(0d);
+        _during = null;
+
+        return pad;
     }
 
     public void Hold(Key key)
