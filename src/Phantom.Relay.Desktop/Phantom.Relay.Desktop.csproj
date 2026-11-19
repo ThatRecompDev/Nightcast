@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Graphics.Sokol" />
+    <PackageReference Include="Phantom.Engine.Media.Vpx" />
+    <PackageReference Include="Phantom.Engine.Platform.Desktop" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.App/Phantom.Relay.App.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Http.Bcl/Phantom.Relay.Http.Bcl.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Xbox/Phantom.Relay.Xbox.csproj" />
+  </ItemGroup>
+
+</Project>

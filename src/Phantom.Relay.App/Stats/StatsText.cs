@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using Phantom.Relay.Stream;
+using Phantom.Relay.Stream.Setup;
 
 namespace Phantom.Relay.App.Stats;
 
@@ -12,8 +13,6 @@ namespace Phantom.Relay.App.Stats;
 /// </summary>
 public static class StatsText
 {
-    public const string AppName = "Phantom.Relay";
-
     private const string NotMeasured = "-";
 
     /// <summary>The title without the stats: the name, then the state unless it streams, and why it failed.</summary>
@@ -21,15 +20,15 @@ public static class StatsText
     {
         if (stats.State == StreamState.Streaming)
         {
-            return AppName;
+            return RelayApp.Name;
         }
 
         if (stats.State == StreamState.Failed)
         {
-            return $"{AppName}: failed: {stats.FailureReason}";
+            return $"{RelayApp.Name}: failed: {stats.FailureReason}";
         }
 
-        return $"{AppName}: {stats.State}";
+        return $"{RelayApp.Name}: {stats.State}";
     }
 
     /// <summary>The title with the stats.</summary>

@@ -30,7 +30,7 @@ namespace Phantom.Relay.Tools.Probe;
 /// </summary>
 public static class ProbeProgram
 {
-    public const string AppId = "phantom.relay";
+    public const string AppId = RelayApp.Id;
 
     private const string SignOutArgument = "--sign-out";
     private const string ViewArgument = "--view";
@@ -110,7 +110,7 @@ public static class ProbeProgram
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var application = new ViewerApplication(device, window, mailbox);
         var driver = new ApplicationDriver(application, new InputFrame(InputLimits.Default), new NoGamepads());
-        SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, "Phantom.Relay"), SokolLimits.Default);
+        SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);
 
         cancellation.Cancel();
 
