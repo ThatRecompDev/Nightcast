@@ -51,6 +51,8 @@ public sealed class SrtpGcmTransform : SrtpTransform
 
     public override int TagLength => SrtpFormat.GcmTagLength;
 
+    public override int RtcpIndexFromEnd => SrtpFormat.RtcpIndexLength;
+
     [HotPath]
     public override bool TryProtectRtp(Span<byte> buffer, int length, int headerLength, uint rolloverCounter, out int protectedLength)
     {
@@ -120,10 +122,11 @@ public sealed class SrtpGcmTransform : SrtpTransform
     }
 
     [HotPath]
-    public override bool TryUnprotectRtcp(Span<byte> packet, out int plainLength)
+    public override bool TryUnprotectRtcp(Span<byte> packet, out int plainLength, out uint index)
     {
         int wordAt = packet.Length - SrtpFormat.RtcpIndexLength;
         plainLength = wordAt - SrtpFormat.GcmTagLength;
+        index = 0;
 
         if (plainLength < SrtpFormat.RtcpHeaderLength)
         {
@@ -133,7 +136,8 @@ public sealed class SrtpGcmTransform : SrtpTransform
         packet[wordAt..].CopyTo(_indexWord);
         uint word = BinaryPrimitives.ReadUInt32BigEndian(_indexWord);
         bool encrypted = (word & SrtpFormat.RtcpEncryptedFlag) != 0;
-        RtcpIv(packet, word & SrtpFormat.RtcpIndexMask);
+        index = word & SrtpFormat.RtcpIndexMask;
+        RtcpIv(packet, index);
 
         // An encrypted packet authenticates its first eight octets; a tagged-only one authenticates all it carries.
         int clearLength = plainLength;

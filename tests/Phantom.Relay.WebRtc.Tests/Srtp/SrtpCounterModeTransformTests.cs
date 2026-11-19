@@ -61,7 +61,7 @@ public sealed class SrtpCounterModeTransformTests
         Assert.True(Transform().TryProtectRtcp(buffer, rtcp.Length, 0x1234, out int length));
 
         Assert.Equal(Convert.ToHexString(ExpectedSrtcp(rtcp, 0x1234)), Convert.ToHexString(buffer.AsSpan(0, length)));
-        Assert.True(Transform().TryUnprotectRtcp(buffer.AsSpan(0, length), out int plainLength));
+        Assert.True(Transform().TryUnprotectRtcp(buffer.AsSpan(0, length), out int plainLength, out _));
         Assert.Equal(rtcp, buffer.AsSpan(0, plainLength).ToArray());
     }
 
@@ -73,7 +73,7 @@ public sealed class SrtpCounterModeTransformTests
         srtcp[^1] ^= 1;
         var before = (byte[])srtcp.Clone();
 
-        Assert.False(Transform().TryUnprotectRtcp(srtcp, out _));
+        Assert.False(Transform().TryUnprotectRtcp(srtcp, out _, out _));
 
         Assert.Equal(before, srtcp);
     }

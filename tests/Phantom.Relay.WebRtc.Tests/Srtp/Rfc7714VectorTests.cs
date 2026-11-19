@@ -75,7 +75,7 @@ public sealed class Rfc7714VectorTests
     {
         var packet = (byte[])SrtcpPacket.Clone();
 
-        Assert.True(Transform().TryUnprotectRtcp(packet, out int length));
+        Assert.True(Transform().TryUnprotectRtcp(packet, out int length, out _));
 
         Assert.Equal(Convert.ToHexString(RtcpPacket), Convert.ToHexString(packet.AsSpan(0, length)));
     }
@@ -86,7 +86,7 @@ public sealed class Rfc7714VectorTests
         var tampered = (byte[])SrtcpPacket.Clone();
         tampered[^1] ^= 1;
 
-        Assert.False(Transform().TryUnprotectRtcp(tampered, out _));
+        Assert.False(Transform().TryUnprotectRtcp(tampered, out _, out _));
     }
 
     [Fact]

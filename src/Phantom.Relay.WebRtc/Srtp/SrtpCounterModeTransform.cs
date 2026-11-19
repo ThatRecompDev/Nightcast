@@ -55,6 +55,8 @@ public sealed class SrtpCounterModeTransform : SrtpTransform
 
     public override int TagLength => SrtpFormat.HmacTagLength;
 
+    public override int RtcpIndexFromEnd => SrtpFormat.RtcpIndexLength + SrtpFormat.HmacTagLength;
+
     [HotPath]
     public override bool TryProtectRtp(Span<byte> buffer, int length, int headerLength, uint rolloverCounter, out int protectedLength)
     {
@@ -121,10 +123,11 @@ public sealed class SrtpCounterModeTransform : SrtpTransform
     }
 
     [HotPath]
-    public override bool TryUnprotectRtcp(Span<byte> packet, out int plainLength)
+    public override bool TryUnprotectRtcp(Span<byte> packet, out int plainLength, out uint index)
     {
         int authenticated = packet.Length - SrtpFormat.HmacTagLength;
         plainLength = authenticated - SrtpFormat.RtcpIndexLength;
+        index = 0;
 
         if (plainLength < SrtpFormat.RtcpHeaderLength)
         {
@@ -139,10 +142,11 @@ public sealed class SrtpCounterModeTransform : SrtpTransform
         }
 
         uint word = BinaryPrimitives.ReadUInt32BigEndian(packet[plainLength..]);
+        index = word & SrtpFormat.RtcpIndexMask;
 
         if ((word & SrtpFormat.RtcpEncryptedFlag) != 0)
         {
-            RtcpIv(packet, word & SrtpFormat.RtcpIndexMask);
+            RtcpIv(packet, index);
             _rtcpCipher.Apply(_iv, packet[SrtpFormat.RtcpHeaderLength..plainLength]);
         }
 

@@ -18,6 +18,9 @@ public abstract class SrtpTransform
     /// <summary>The tag's length, which follows (AES-CM) or precedes (AES-GCM) SRTCP's index word.</summary>
     public abstract int TagLength { get; }
 
+    /// <summary>How far from the end of an SRTCP packet its E flag and index word starts.</summary>
+    public abstract int RtcpIndexFromEnd { get; }
+
     /// <summary>The transform of <paramref name="profile"/> with these session keys.</summary>
     public static SrtpTransform Create(SrtpProfile profile, SrtpSessionKeys keys)
     {
@@ -44,6 +47,9 @@ public abstract class SrtpTransform
     /// <summary>Encrypts an RTCP packet in place with SRTCP index <paramref name="index"/> and appends the index and tag.</summary>
     public abstract bool TryProtectRtcp(Span<byte> buffer, int length, uint index, out int protectedLength);
 
-    /// <summary>Checks the tag of an SRTCP packet and decrypts it in place; false when the tag does not match.</summary>
-    public abstract bool TryUnprotectRtcp(Span<byte> packet, out int plainLength);
+    /// <summary>
+    /// Checks the tag of an SRTCP packet and decrypts it in place, giving its SRTCP index for the replay check; false
+    /// when the tag does not match.
+    /// </summary>
+    public abstract bool TryUnprotectRtcp(Span<byte> packet, out int plainLength, out uint index);
 }

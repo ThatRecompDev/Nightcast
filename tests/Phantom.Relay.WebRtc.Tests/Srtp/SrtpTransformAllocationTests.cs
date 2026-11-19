@@ -32,6 +32,6 @@ public sealed class SrtpTransformAllocationTests
         Assert.True(transform.TryProtectRtp(rtp, 1200, 12, 0, out int length));
         Assert.True(transform.TryUnprotectRtp(rtp.AsSpan(0, length), 12, 0, out _));
         Assert.True(transform.TryProtectRtcp(rtcp, 32, 1, out length));
-        Assert.True(transform.TryUnprotectRtcp(rtcp.AsSpan(0, length), out _));
+        Assert.True(transform.TryUnprotectRtcp(rtcp.AsSpan(0, length), out _, out _));
     }
 }
