@@ -9,6 +9,7 @@
     <PackageVersion Include="Phantom.Engine.Build" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Content" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Core" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Platform.Desktop" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Testing" Version="0.83.2" />
   </ItemGroup>
 

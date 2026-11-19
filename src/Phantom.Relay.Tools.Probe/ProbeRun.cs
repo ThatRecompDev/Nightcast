@@ -1,0 +1,162 @@
+// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+
+using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.Xbox.Auth;
+using Phantom.Relay.Xbox.Session;
+
+namespace Phantom.Relay.Tools.Probe;
+
+/// <summary>
+/// One live probe (docs/architecture/probe.md): sign in when needed, list the consoles, start a session on the chosen
+/// one, wait until it takes an offer, send the probe offer and show what the console answers, and always stop the
+/// session it started. It never prints a token.
+/// </summary>
+public sealed class ProbeRun
+{
+    public const int Succeeded = 0;
+    public const int NoConsole = 2;
+    public const int Refused = 3;
+
+    private readonly IXboxAuthService _auth;
+    private readonly IXHomeSessionService _sessions;
+    private readonly IRandomSource _random;
+    private readonly TextReader _input;
+    private readonly TextWriter _output;
+
+    public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, IRandomSource random, TextReader input, TextWriter output)
+    {
+        _auth = auth;
+        _sessions = sessions;
+        _random = random;
+        _input = input;
+        _output = output;
+    }
+
+    public async Task<int> RunAsync(StreamSettings settings, CancellationToken cancellation)
+    {
+        try
+        {
+            await SignInAsync(cancellation);
+            var console = await ChooseConsoleAsync(cancellation);
+
+            if (console is null)
+            {
+                return NoConsole;
+            }
+
+            await ProbeConsoleAsync(console, settings, cancellation);
+
+            return Succeeded;
+        }
+        catch (XboxAuthException error)
+        {
+            _output.WriteLine($"Sign-in refused: {error.Message}");
+
+            return Refused;
+        }
+        catch (XHomeSessionException error)
+        {
+            _output.WriteLine($"Streaming service refused: {error.Message}");
+
+            return Refused;
+        }
+    }
+
+    private async Task SignInAsync(CancellationToken cancellation)
+    {
+        if (!_auth.IsSignedIn)
+        {
+            _output.WriteLine("Open this page, sign in with the account that owns the console, then paste the address the page ends on:");
+            _output.WriteLine(_auth.SignInAddress);
+            _output.Write("> ");
+            string? pasted = await _input.ReadLineAsync(cancellation);
+
+            if (!Uri.TryCreate(pasted?.Trim(), UriKind.Absolute, out var redirected))
+            {
+                throw new XboxAuthException("That was not an address.");
+            }
+
+            await _auth.CompleteSignInAsync(redirected, cancellation);
+        }
+
+        var token = await _auth.GetStreamingTokenAsync(cancellation);
+        _output.WriteLine($"Signed in. Streaming region: {token.DefaultRegion.Name} ({token.Regions.Count} offered)");
+    }
+
+    private async Task<XboxConsole?> ChooseConsoleAsync(CancellationToken cancellation)
+    {
+        var consoles = await _sessions.GetConsolesAsync(cancellation);
+
+        if (consoles.Count == 0)
+        {
+            _output.WriteLine("No console found. Turn on remote features on the console (Settings, Devices & connections, Remote features).");
+
+            return null;
+        }
+
+        for (int i = 0; i < consoles.Count; i++)
+        {
+            var console = consoles[i];
+            string streaming = console.IsStreamingEnabled ? "on" : "off";
+            _output.WriteLine($"  {i + 1}. {console.Name} ({console.ConsoleType}, {console.PowerState}, streaming {streaming})");
+        }
+
+        if (consoles.Count == 1)
+        {
+            return consoles[0];
+        }
+
+        _output.Write("Console number > ");
+        string? choice = await _input.ReadLineAsync(cancellation);
+
+        if (!int.TryParse(choice, out int number) || number < 1 || number > consoles.Count)
+        {
+            _output.WriteLine("No such console.");
+
+            return null;
+        }
+
+        return consoles[number - 1];
+    }
+
+    private async Task ProbeConsoleAsync(XboxConsole console, StreamSettings settings, CancellationToken cancellation)
+    {
+        _output.WriteLine($"Starting a session on {console.Name}, asking for {settings.Resolution} (OS name '{settings.OsName}')");
+        var session = await _sessions.StartAsync(console.ServerId, settings, cancellation);
+
+        try
+        {
+            await _sessions.WaitUntilReadyAsync(session, new StateWriter(_output), cancellation);
+            await OfferAsync(session, cancellation);
+        }
+        finally
+        {
+            await StopAsync(session);
+        }
+    }
+
+    private async Task OfferAsync(StreamSession session, CancellationToken cancellation)
+    {
+        _output.WriteLine("Sending the probe offer (nothing will connect; this only shows what the console would send):");
+        string answer = await _sessions.ExchangeSdpAsync(session, ProbeOffer.Create(_random), cancellation);
+
+        foreach (string line in AnswerSummary.Of(answer))
+        {
+            _output.WriteLine($"  {line}");
+        }
+    }
+
+    /// <summary>Stops the session even when the run was cancelled, so the console is never left waiting.</summary>
+    private async Task StopAsync(StreamSession session)
+    {
+        try
+        {
+            await _sessions.StopAsync(session, CancellationToken.None);
+            _output.WriteLine("Session stopped.");
+        }
+        catch (XHomeSessionException error)
+        {
+            _output.WriteLine($"Stopping the session failed: {error.Message}");
+        }
+    }
+}

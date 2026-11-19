@@ -36,9 +36,11 @@ project lands.
 |---|---|---|---|
 | Xbox | `Phantom.Relay.Xbox` | engine Core | started: the sign-in chain, the service's REST calls, the console's channel messages and input reports ([xhome](xhome.md)) |
 | Profiles | `Phantom.Relay.Profiles` | Xbox, engine Content, Core | started: per-game profiles and the stick and trigger shaping they set, kept in the engine's user store |
+| Adapters | `Phantom.Relay.Http.Bcl` | Xbox | started: the desktop's `IHttpExchange` over the BCL HTTP client, until the engine's HTTPS port lands |
 | Stream | `Phantom.Relay.Stream` | Xbox, Profiles, engine Net.WebRtc, Media, Audio, Hosting | planned: one session from sign-in to pictures, sound and pads |
 | App | `Phantom.Relay.App` | Stream, Profiles, Xbox, engine Ui, Hosting, Graphics | planned: the screens (sign-in, consoles, profiles, the stream and its stats) |
 | Heads | `Phantom.Relay.Desktop`, `.Browser`, `.Specter` | App and every layer above, engine Platform | planned: the composition roots |
+| Tools | `Phantom.Relay.Tools.Probe` | Adapters, Profiles, Xbox, engine Platform.Desktop | started: the live probe: sign in, list the consoles, start a session, see whether the console answers an offer, stop ([probe](probe.md)) |
 | Tests | `*.Tests` | the project under test, engine Testing, Architecture | landed |
 
 ## Where each piece comes from
