@@ -1,6 +1,5 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-using Phantom.Engine.Media.Video;
 using Phantom.Engine.Media.Vpx;
 using Phantom.Relay.WebRtc.H264;
 using Phantom.Relay.WebRtc.Rtp;
@@ -9,9 +8,11 @@ using Phantom.Relay.WebRtc.Srtp;
 namespace Phantom.Relay.Tools.Probe;
 
 /// <summary>
-/// The live media path, measured: SRTP decrypted with the console's key, video RTP through the latency-first reorder
-/// stage into the H.264 depacketizer, and every whole access unit decoded by the engine's H.264 decoder (openh264),
-/// timed. Sound is counted, not decoded yet.
+/// The live media path, measured. It decrypts SRTP with the console's key and sends video RTP through the
+/// latency-first reorder stage into the H.264 depacketizer. Each whole access unit is handed to a decode worker on
+/// its own thread, so this loop never waits on the decoder. After a loss, while the depacketizer waits for a
+/// keyframe, it asks the console for one with an SRTCP PLI, at most once per <see cref="KeyframeRequestInterval"/>.
+/// Sound is counted, not decoded yet.
 /// </summary>
 public sealed class MediaReceiver : IAccessUnitSink, IDisposable
 {
@@ -22,39 +23,48 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
     private const int StreamHeight = 1440;
     private const int OpusPayload = 111;
 
-    private static readonly TimeSpan ReorderWindow = TimeSpan.FromMilliseconds(3);
+    /// <summary>Our RTCP sender id: any value; the console only needs it to be stable.</summary>
+    private const uint FeedbackSsrc = 0x52454C59;
 
-    private readonly SrtpContext _srtp;
+    private static readonly TimeSpan ReorderWindow = TimeSpan.FromMilliseconds(3);
+    private static readonly TimeSpan KeyframeRequestInterval = TimeSpan.FromMilliseconds(100);
+
+    private readonly SrtpContext _decrypt;
+    private readonly SrtpContext _protect;
     private readonly H264Depacketizer _depacketizer;
     private readonly RtpReorderBuffer _reorder;
     private readonly RtpHeader _header = new();
     private readonly HashSet<int> _videoPayloads;
     private readonly TimeProvider _clock;
-    private readonly H264Decoder? _decoder;
+    private readonly IRtcpOutput _rtcp;
+    private readonly DecodeWorker? _decoder;
     private readonly string? _decoderProblem;
-    private readonly VideoFrame _picture = new();
     private readonly byte[] _scratch = new byte[MaxPacket];
+    private readonly byte[] _feedback = new byte[MaxPacket];
 
+    private uint _videoSsrc;
+    private long _lastRequest;
+    private long _requests;
     private long _decrypted;
     private long _refused;
-    private long _rtcp;
+    private long _rtcpPackets;
     private long _audio;
     private long _units;
     private long _keyframes;
-    private long _pictures;
-    private long _decodeTicks;
-    private long _worstTicks;
 
-    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, TimeProvider clock)
+    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, TimeProvider clock)
     {
-        SrtpKeyingMaterial.Split(profile, keyingMaterial, localIsClient: true, out _, out var console);
-        _srtp = SrtpContext.Create(profile, console, MaxSources);
+        SrtpKeyingMaterial.Split(profile, keyingMaterial, localIsClient: true, out var own, out var console);
+        _decrypt = SrtpContext.Create(profile, console, MaxSources);
+        _protect = SrtpContext.Create(profile, own, MaxSources);
         _depacketizer = new H264Depacketizer(this, H264Depacketizer.CapacityFor(StreamWidth, StreamHeight));
         _reorder = new RtpReorderBuffer(_depacketizer, clock, ReorderWindow, ReorderCapacity);
         _videoPayloads = [.. videoPayloads];
-        _clock = clock;
 
-        _decoder = H264Decoder.TryOpen(out _decoderProblem);
+        _rtcp = rtcp;
+        _clock = clock;
+        _decoder = OpenDecoder(clock, out _decoderProblem);
+        _decoder?.Start();
     }
 
     /// <summary>One RTP or RTCP datagram from the console.</summary>
@@ -62,7 +72,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
     {
         if (RtpFormat.IsRtcp(datagram))
         {
-            _rtcp++;
+            _rtcpPackets++;
 
             return;
         }
@@ -77,7 +87,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         var packet = _scratch.AsSpan(0, datagram.Length);
         datagram.CopyTo(packet);
 
-        if (!_srtp.TryUnprotectRtp(packet, out int length) || !_header.TryRead(packet[..length]))
+        if (!_decrypt.TryUnprotectRtp(packet, out int length) || !_header.TryRead(packet[..length]))
         {
             _refused++;
 
@@ -88,10 +98,11 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         Route(packet[..length]);
     }
 
-    /// <summary>Lets the reorder stage give up on holes whose time has passed.</summary>
+    /// <summary>Lets the reorder stage give up on holes whose time has passed, and asks for a keyframe when one is needed.</summary>
     public void Service()
     {
         _reorder.Service();
+        RequestKeyframeWhenNeeded();
     }
 
     public void Deliver(ReadOnlySpan<byte> accessUnit, uint timestamp, H264AccessUnitContent content)
@@ -103,22 +114,19 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
             _keyframes++;
         }
 
-        if (_decoder is not null)
-        {
-            Decode(accessUnit, timestamp);
-        }
+        _decoder?.Enqueue(accessUnit, timestamp);
     }
 
     public MediaReport Report()
     {
-        var average = TimeSpan.Zero;
+        var counts = new MediaCounts(_decrypted, _refused, _rtcpPackets, _audio, _units, _keyframes, _depacketizer.Dropped, _reorder.Lost, _requests);
 
-        if (_units > 0)
+        if (_decoder is null)
         {
-            average = Duration(_decodeTicks / _units);
+            return new MediaReport(counts, 0, 0, 0, TimeSpan.Zero, TimeSpan.Zero, 0, _decoderProblem);
         }
 
-        return new MediaReport(_decrypted, _refused, _rtcp, _audio, _units, _keyframes, _depacketizer.Dropped, _reorder.Lost, _pictures, _picture.Width, _picture.Height, average, Duration(_worstTicks), _decoderProblem);
+        return new MediaReport(counts, _decoder.Pictures, _decoder.Width, _decoder.Height, _decoder.AverageDecode(), _decoder.WorstDecode(), _decoder.DeepestQueue, null);
     }
 
     public void Dispose()
@@ -126,10 +134,23 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         _decoder?.Dispose();
     }
 
+    private static DecodeWorker? OpenDecoder(TimeProvider clock, out string? problem)
+    {
+        var decoder = H264Decoder.TryOpen(out problem);
+
+        if (decoder is null)
+        {
+            return null;
+        }
+
+        return new DecodeWorker(decoder, clock);
+    }
+
     private void Route(ReadOnlySpan<byte> packet)
     {
         if (_videoPayloads.Contains(_header.PayloadType))
         {
+            _videoSsrc = _header.Ssrc;
             _reorder.Push(packet);
         }
         else if (_header.PayloadType == OpusPayload)
@@ -138,23 +159,23 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         }
     }
 
-    private void Decode(ReadOnlySpan<byte> accessUnit, uint timestamp)
+    /// <summary>A PLI (RFC 4585) for the video source, protected as SRTCP, when the depacketizer waits for a keyframe.</summary>
+    private void RequestKeyframeWhenNeeded()
     {
-        long start = _clock.GetTimestamp();
-        _decoder!.Decode(accessUnit, timestamp);
+        long now = _clock.GetTimestamp();
 
-        while (_decoder.TakePicture(_picture))
+        if (!_depacketizer.NeedsKeyframe || _videoSsrc == 0 || _clock.GetElapsedTime(_lastRequest, now) < KeyframeRequestInterval)
         {
-            _pictures++;
+            return;
         }
 
-        long spent = _clock.GetTimestamp() - start;
-        _decodeTicks += spent;
-        _worstTicks = Math.Max(_worstTicks, spent);
-    }
+        int length = RtcpWriter.WritePictureLossIndication(_feedback, FeedbackSsrc, _videoSsrc);
 
-    private TimeSpan Duration(long ticks)
-    {
-        return TimeSpan.FromSeconds((double)ticks / _clock.TimestampFrequency);
+        if (_protect.TryProtectRtcp(_feedback, length, out int protectedLength))
+        {
+            _rtcp.Send(_feedback.AsSpan(0, protectedLength));
+            _requests++;
+            _lastRequest = now;
+        }
     }
 }

@@ -189,8 +189,9 @@ public sealed class ProbeRun
             return;
         }
 
-        _output.WriteLine($"  SRTP: {media.Decrypted} decrypted, {media.Refused} refused; {media.Rtcp} RTCP, {media.Audio} sound packets");
-        _output.WriteLine($"  video: {media.AccessUnits} frames assembled ({media.Keyframes} keyframes), {media.Dropped} dropped, {media.Lost} packets lost");
+        var counts = media.Counts;
+        _output.WriteLine($"  SRTP: {counts.Decrypted} decrypted, {counts.Refused} refused; {counts.Rtcp} RTCP, {counts.Audio} sound packets");
+        _output.WriteLine($"  video: {counts.AccessUnits} frames assembled ({counts.Keyframes} keyframes), {counts.Dropped} dropped, {counts.Lost} packets lost, {counts.KeyframeRequests} keyframe requests");
 
         if (media.DecoderProblem is not null)
         {
@@ -199,7 +200,7 @@ public sealed class ProbeRun
             return;
         }
 
-        _output.WriteLine($"  decoded: {media.Pictures} pictures at {media.Width}x{media.Height}; decode {Milliseconds(media.AverageDecode)} average, {Milliseconds(media.WorstDecode)} worst");
+        _output.WriteLine($"  decoded: {media.Pictures} pictures at {media.Width}x{media.Height}; decode {Milliseconds(media.AverageDecode)} average, {Milliseconds(media.WorstDecode)} worst; decode queue at most {media.DeepestQueue} deep");
     }
 
     private void ReportChannels(ChannelReport? channels)

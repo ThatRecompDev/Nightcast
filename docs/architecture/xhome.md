@@ -72,6 +72,14 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
   TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (0xC02B), SRTP profile **AEAD_AES_128_GCM**, the console's certificate
   matching its answer's fingerprint. No RTP arrives yet: the console waits for the data channels (the control
   channel's authorization and the message channel's handshake) before it streams.
+- **The stream**: once the four data channels are open (the control authorization and pad 0, the message
+  handshake and client description, the input metadata), the console streams: the first RTP packet about 200 ms
+  later, then about 60 video frames a second at **2560x1440** (H.264 Main), Opus sound and RTCP, all decrypted with
+  the AEAD-AES-128-GCM keys from DTLS. It answers a PLI with a keyframe. Its messages on the message channel include
+  `/streaming/properties/titleinfo` (the running game) and `/streaming/touchcontrols/showlayoutv2`.
+- Software decoding (the engine's openh264) of that stream: 8.1 ms a frame on average, 41.5 ms at worst
+  (keyframes), on the owner's desktop CPU. It keeps up with 60 fps, but the keyframe spikes cost latency, so a
+  hardware decoder is the next latency step.
 - No `/connect` call was needed for the console to answer the offer (open clients send one with a user token to
   `{session}/connect`; whether the console offering needs it to carry media is not known yet).
 

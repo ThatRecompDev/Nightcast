@@ -20,7 +20,7 @@ namespace Phantom.Relay.Tools.Probe;
 /// connects. On the selected path our DTLS client (the answer says the console is passive) runs its handshake on its
 /// own thread, fed by this loop. Afterwards the loop listens a little longer and counts what the console sends.
 /// </summary>
-public sealed class LiveIce : ILiveIce, IDisposable
+public sealed class LiveIce : ILiveIce, IRtcpOutput, IDisposable
 {
     private const int Dtls = 0;
     private const int Rtp = 1;
@@ -49,6 +49,7 @@ public sealed class LiveIce : ILiveIce, IDisposable
     private DtlsDatagramBridge? _bridge;
     private ConsoleChannels? _channels;
     private MediaReceiver? _media;
+    private DatagramEndpoint? _path;
     private long _channelsStartedAt;
     private TimeSpan? _firstRtp;
 
@@ -91,6 +92,15 @@ public sealed class LiveIce : ILiveIce, IDisposable
         return outcome with { LatestRoundTrip = agent.RoundTrip, DtlsDatagrams = _counts[Dtls], RtpDatagrams = _counts[Rtp], OtherDatagrams = _counts[Other] };
     }
 
+    /// <summary>RTCP feedback goes straight out on the selected path, beside the DTLS records.</summary>
+    public void Send(ReadOnlySpan<byte> packet)
+    {
+        if (_path is not null)
+        {
+            _transport.TrySend(_path.Value, packet);
+        }
+    }
+
     public void Dispose()
     {
         _bridge?.Dispose();
@@ -130,7 +140,8 @@ public sealed class LiveIce : ILiveIce, IDisposable
         }
 
         // The session is up: the media path decrypts with the console's key, the data channels run over it.
-        _media = new MediaReceiver(client.Profile!.Value, client.KeyingMaterial!, VideoPayloads.Of(answer), _clock);
+        _path = agent.Selected;
+        _media = new MediaReceiver(client.Profile!.Value, client.KeyingMaterial!, VideoPayloads.Of(answer), this, _clock);
         _channels = new ConsoleChannels(handshake.Result, _bridge, _clock, _random);
         _channels.Open();
         _channelsStartedAt = _clock.GetTimestamp();
