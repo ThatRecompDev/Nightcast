@@ -9,12 +9,15 @@
     <PackageVersion Include="Phantom.Engine.Build" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Content" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Core" Version="0.83.2" />
+    <PackageVersion Include="Phantom.Engine.Net" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Platform.Desktop" Version="0.83.2" />
     <PackageVersion Include="Phantom.Engine.Testing" Version="0.83.2" />
   </ItemGroup>
 
   <!-- Central package versions. A package is added here by the commit whose code first needs it. -->
   <ItemGroup>
+    <!-- The engine's own version (Net.Tls), so the move of WebRtc into the engine changes nothing. -->
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.5.1" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageVersion Include="xunit" Version="2.9.2" />

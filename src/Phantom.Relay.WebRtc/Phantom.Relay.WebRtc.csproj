@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Game-agnostic on purpose: it moves into Phantom.Engine (Net.WebRtc) as it is. Nothing here names Relay's
+       other projects or the console's protocol. -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="Phantom.Engine.Core" />
+    <PackageReference Include="Phantom.Engine.Net" />
+  </ItemGroup>
+
+</Project>

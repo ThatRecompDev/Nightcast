@@ -34,6 +34,7 @@ project lands.
 
 | Layer | Projects | May reference | Status |
 |---|---|---|---|
+| WebRtc | `Phantom.Relay.WebRtc` | engine Net, Core; BouncyCastle | started: STUN (RFC 8489) messages with integrity and fingerprint, checked on RFC 5769's vectors. Game-agnostic: it moves into the engine as `Net.WebRtc` once it carries a stream (owner's call, 2026-11-19); next ICE, DTLS-SRTP, SCTP data channels, RTP |
 | Xbox | `Phantom.Relay.Xbox` | engine Core | started: the sign-in chain, the service's REST calls, the console's channel messages and input reports ([xhome](xhome.md)) |
 | Profiles | `Phantom.Relay.Profiles` | Xbox, engine Content, Core | started: per-game profiles and the stick and trigger shaping they set, kept in the engine's user store |
 | Adapters | `Phantom.Relay.Http.Bcl` | Xbox | started: the desktop's `IHttpExchange` over the BCL HTTP client, until the engine's HTTPS port lands |
