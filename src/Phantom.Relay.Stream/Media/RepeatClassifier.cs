@@ -17,7 +17,12 @@ namespace Phantom.Relay.Stream.Media;
 /// <item><b>Half</b>: units alternate between the new phase and the repeat phase. A unit in the new phase is new
 /// whatever its size (a quiet scene's picture); one in the repeat phase is a repeat when small. A large one there is
 /// new: alone it is a slip of the rhythm (the next small unit in the new phase moves the phase on by one);
-/// <see cref="RepeatSettings.UnlockUnits"/> in a row mean the game now draws every picture, back to Full.</item>
+/// <see cref="RepeatSettings.UnlockUnits"/> in a row mean the game now draws every picture, back to Full. A unit in the
+/// new phase at most <see cref="RepeatSettings.HoldPercent"/> % of the unit before is a <b>held</b> picture: the game
+/// dropped below 30 fps (25 fps sends N r N r r ...) and the console refined the same picture once more, so it is a
+/// repeat and the phase moves on by one, as on a slip; frame generation is never fed one picture twice. Only after a
+/// unit larger than <see cref="RepeatSettings.RepeatBytes"/>: a quiet scene's tiny units vary too much for a share of
+/// them to mean anything, and a picture held in a quiet scene leaves nothing for an interpolation to get wrong.</item>
 /// </list>
 /// A key frame is always new. A quiet scene therefore never turns a 30 fps game's new pictures into repeats, nor a
 /// 60 fps game's small pictures into repeats. One thread at a time; allocates nothing.
@@ -50,12 +55,13 @@ public sealed class RepeatClassifier
     public PictureKind Classify(int bytes, bool key)
     {
         var small = !key && (bytes <= _settings.RepeatBytes || (long)bytes * RepeatSettings.Percent <= _previousBytes * SmallPercent());
+        var held = !key && _previousBytes > _settings.RepeatBytes && (long)bytes * RepeatSettings.Percent <= _previousBytes * _settings.HoldPercent;
         _previousBytes = bytes;
         PictureKind kind;
 
         if (Cadence == PictureCadence.Half)
         {
-            kind = InHalf(small);
+            kind = InHalf(small, held);
         }
         else
         {
@@ -117,14 +123,14 @@ public sealed class RepeatClassifier
         return PictureKind.New;
     }
 
-    private PictureKind InHalf(bool small)
+    private PictureKind InHalf(bool small, bool held)
     {
         var newPhase = _nextIsNewPhase;
         _nextIsNewPhase = !newPhase;
 
         if (newPhase)
         {
-            return InNewPhase(small);
+            return InNewPhase(small, held);
         }
 
         if (small)
@@ -147,13 +153,15 @@ public sealed class RepeatClassifier
         return PictureKind.New;
     }
 
-    // A small unit right after a large one in the repeat phase: the rhythm slipped by one, so this is the repeat.
-    private PictureKind InNewPhase(bool small)
+    // A small unit right after a large one in the repeat phase: the rhythm slipped by one, so this is the repeat. A unit
+    // clearly smaller than the repeat before it: the game held its picture past two units, so this repeats it again.
+    // Either way the phase moves on by one: the next unit is the new phase's.
+    private PictureKind InNewPhase(bool small, bool held)
     {
         var slipped = _slipped && small;
         _slipped = false;
 
-        if (!slipped)
+        if (!slipped && !held)
         {
             return PictureKind.New;
         }

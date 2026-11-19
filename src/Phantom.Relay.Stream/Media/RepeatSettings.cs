@@ -21,7 +21,8 @@ namespace Phantom.Relay.Stream.Media;
 /// </param>
 /// <param name="HoldPercent">
 /// The looser share that keeps a rhythm once found: in the half-rate cadence a unit in the repeat phase is a repeat at
-/// most this percentage of the unit before, so a repeat refined a little more than usual does not break it.
+/// most this percentage of the unit before, so a repeat refined a little more than usual does not break it. In the new
+/// phase a unit at most this share of the unit before is a held picture (the game below 30 fps), a repeat too.
 /// </param>
 /// <param name="LockUnits">Units in a row that must alternate small and large before the half-rate cadence is trusted.</param>
 /// <param name="UnlockUnits">

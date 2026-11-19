@@ -10,6 +10,8 @@ public sealed class RepeatClassifierTests
     private const int Large = 42_000;
     private const int Small = 310;
     private const int QuietNew = 900;
+    private const int Refine = 21_000;
+    private const int Again = 6_000;
 
     [Fact]
     public void A_30_fps_game_alternates_new_and_repeat_once_the_rhythm_held_four_pairs()
@@ -115,6 +117,57 @@ public sealed class RepeatClassifierTests
     }
 
     [Fact]
+    public void A_game_dropping_to_25_fps_has_its_held_pictures_taken_as_repeats()
+    {
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+        Classify(classifier, Refined(pictures: 4, units: 2));
+
+        // 25 fps on 60 units a second: pictures of 2, 3, 2, 3, 2 units; the third unit refines the picture once more.
+        var units = new[] { 2, 3, 2, 3, 2, 2, 3, 2, 3, 2 };
+        var kinds = Classify(classifier, units.SelectMany(count => Refined(1, count)));
+
+        Assert.Equal(units.SelectMany(PictureOf), kinds);
+        Assert.Equal(PictureCadence.Half, classifier.Cadence);
+    }
+
+    [Fact]
+    public void A_held_picture_is_found_in_the_new_phase_and_the_rhythm_goes_on_one_unit_later()
+    {
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+        Classify(classifier, Refined(pictures: 4, units: 2));
+
+        var kinds = Classify(classifier, [Large, Refine, Again, Large, Refine, Large, Refine]);
+
+        Assert.Equal([PictureKind.New, PictureKind.Repeat, PictureKind.Repeat, PictureKind.New, PictureKind.Repeat, PictureKind.New, PictureKind.Repeat], kinds);
+    }
+
+    [Fact]
+    public void A_held_picture_refined_as_much_as_the_first_repeat_is_caught_one_unit_later_as_a_slip()
+    {
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+        Classify(classifier, Refined(pictures: 4, units: 2));
+
+        // The second refinement at 95 % of the first: not clearly smaller, so taken as new; the next picture then
+        // lands in the repeat phase (a slip), and the rhythm is back one unit later.
+        var kinds = Classify(classifier, [Large, Refine, 19_950, Large, Refine, Large, Refine]);
+
+        Assert.Equal([PictureKind.New, PictureKind.Repeat, PictureKind.New, PictureKind.New, PictureKind.Repeat, PictureKind.New, PictureKind.Repeat], kinds);
+        Assert.Equal(PictureCadence.Half, classifier.Cadence);
+    }
+
+    [Fact]
+    public void A_quiet_scene_whose_tiny_units_shrink_keeps_its_new_pictures_new()
+    {
+        var classifier = new RepeatClassifier(RepeatSettings.Standard);
+        Classify(classifier, Alternating(8));
+
+        // Tiny units of a still picture, each new one smaller than the repeat before it: no share of them is a hold.
+        var kinds = Classify(classifier, [900, 800, 600, 500, 400, 300]);
+
+        Assert.Equal([PictureKind.New, PictureKind.Repeat, PictureKind.New, PictureKind.Repeat, PictureKind.New, PictureKind.Repeat], kinds);
+    }
+
+    [Fact]
     public void A_key_frame_is_new_whatever_its_size()
     {
         var classifier = new RepeatClassifier(RepeatSettings.Standard);
@@ -130,6 +183,43 @@ public sealed class RepeatClassifierTests
         var kinds = Classify(classifier, Enumerable.Range(0, 8).Select(index => SizeAt(index, QuietNew)));
 
         Assert.Equal(PictureKind.Repeat, kinds[^1]);
+    }
+
+    // Pictures of the given units each: the new picture, its refined repeat at half its size, then any more at a seventh.
+    private static IEnumerable<int> Refined(int pictures, int units)
+    {
+        return Enumerable.Range(0, pictures).SelectMany(_ => Enumerable.Range(0, units).Select(RefinedAt));
+    }
+
+    private static int RefinedAt(int unit)
+    {
+        if (unit == 0)
+        {
+            return Large;
+        }
+
+        if (unit == 1)
+        {
+            return Refine;
+        }
+
+        return Again;
+    }
+
+    private static IEnumerable<PictureKind> PictureOf(int units)
+    {
+        return Enumerable.Range(0, units).Select(KindOfUnit);
+    }
+
+    // A picture's first unit is new, the rest repeat it.
+    private static PictureKind KindOfUnit(int unit)
+    {
+        if (unit == 0)
+        {
+            return PictureKind.New;
+        }
+
+        return PictureKind.Repeat;
     }
 
     // L S L S ...: a 30 fps game in motion.

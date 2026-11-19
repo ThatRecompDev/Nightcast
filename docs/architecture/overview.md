@@ -113,7 +113,11 @@ a few hundred bytes at 1440p, a new picture of a game in motion tens of kilobyte
 Size alone would take a quiet scene's small new pictures for repeats, so it follows the cadence: every unit is new
 until eight units in a row alternate small and large; then units alternate between a new phase (new whatever their
 size) and a repeat phase (a repeat when small); one large unit in the repeat phase is a slip that moves the phase on,
-three in a row drop back to every unit new. Key frames are always new. The counts a second and the cadence show in the
+three in a row drop back to every unit new. When the game falls below 30 fps the console sends a picture for three
+units (25 fps: N r N r r ...); a unit in the new phase clearly smaller than the one before (`HoldPercent`, after a unit
+above `RepeatBytes`) is that held picture, a repeat, and the phase moves on by one, so frame generation is never fed
+one picture twice. A second refinement nearly as large as the first is missed and caught one unit later as a slip
+(one doubled picture). Key frames are always new. The counts a second and the cadence show in the
 F3 stats and in a debug log line once a second. The threshold is the owner's observation, not yet measured on a long
 capture: a live GTA run must confirm it.
 
