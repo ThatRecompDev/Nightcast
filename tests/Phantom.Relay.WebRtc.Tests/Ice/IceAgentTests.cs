@@ -99,6 +99,21 @@ public sealed class IceAgentTests
     }
 
     [Fact]
+    public void The_round_trip_of_the_selected_path_is_measured()
+    {
+        var slow = InMemoryLinkOptions.Perfect with { Latency = TimeSpan.FromMilliseconds(25) };
+        var network = Network(slow);
+        var (agent, transport) = Agent(network);
+        var console = Peer(network, ConsoleAt, agent);
+
+        agent.Start(ConsoleCredentials, [console.Candidate(1_000_000)]);
+        Run(agent, transport, [console], 20);
+
+        Assert.NotNull(agent.RoundTrip);
+        Assert.InRange(agent.RoundTrip!.Value, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(80));
+    }
+
+    [Fact]
     public void Once_connected_the_selected_pair_is_kept_alive()
     {
         var network = Network(InMemoryLinkOptions.Perfect);

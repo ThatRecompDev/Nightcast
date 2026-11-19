@@ -42,8 +42,9 @@ public sealed class ProbeRunTests : IDisposable
         Assert.Contains($"a=ice-ufrag:{_ice.Local!.Ufrag}", _sessions.Offer, StringComparison.Ordinal);
         Assert.Contains($"a=ice-pwd:{_ice.Local.Password}", _sessions.Offer, StringComparison.Ordinal);
         Assert.Equal(_sessions.Answer, _ice.Answer);
-        Assert.Contains("ICE: Connected after 42 ms (2 console candidates)", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("ICE: Connected after 42.00 ms (2 console candidates)", _output.ToString(), StringComparison.Ordinal);
         Assert.Contains("then received: 3 DTLS", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("round trip to the console: first 1.25 ms", _output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

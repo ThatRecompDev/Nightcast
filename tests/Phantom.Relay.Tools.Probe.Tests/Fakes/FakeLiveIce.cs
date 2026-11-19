@@ -19,6 +19,8 @@ public sealed class FakeLiveIce : ILiveIce
         Answer = answer;
         var selected = DatagramEndpoint.FromOctets(192, 168, 1, 20, 9002);
 
-        return Task.FromResult(new IceOutcome(IceAgentState.Connected, selected, TimeSpan.FromMilliseconds(42), 2, 3, 0, 0));
+        var roundTrip = TimeSpan.FromMilliseconds(1.25);
+
+        return Task.FromResult(new IceOutcome(IceAgentState.Connected, selected, TimeSpan.FromMilliseconds(42), roundTrip, roundTrip, 2, 3, 0, 0));
     }
 }

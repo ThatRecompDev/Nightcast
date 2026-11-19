@@ -34,4 +34,10 @@ public sealed class IcePair
 
     /// <summary>How long to wait for the answer to the last transmission, doubled each time.</summary>
     public TimeSpan Timeout { get; set; }
+
+    /// <summary>When the last check went out (<see cref="TimeProvider.GetTimestamp"/> ticks).</summary>
+    public long SentAt { get; set; }
+
+    /// <summary>The time from the last answered check to its answer: the path's round trip, null until one is answered.</summary>
+    public TimeSpan? RoundTrip { get; set; }
 }

@@ -156,14 +156,25 @@ public sealed class ProbeRun
 
     private void ReportIce(IceOutcome outcome)
     {
-        _output.WriteLine($"  ICE: {outcome.State} after {outcome.Elapsed.TotalMilliseconds:F0} ms ({outcome.RemoteCandidates} console candidates)");
+        _output.WriteLine($"  ICE: {outcome.State} after {Milliseconds(outcome.Elapsed)} ({outcome.RemoteCandidates} console candidates)");
 
         if (outcome.Selected is not null)
         {
             _output.WriteLine($"  selected path: {outcome.Selected}");
+            _output.WriteLine($"  round trip to the console: first {Milliseconds(outcome.FirstRoundTrip)}, keep-alive {Milliseconds(outcome.LatestRoundTrip)}");
         }
 
         _output.WriteLine($"  then received: {outcome.DtlsDatagrams} DTLS, {outcome.RtpDatagrams} RTP/RTCP, {outcome.OtherDatagrams} other datagrams");
+    }
+
+    private static string Milliseconds(TimeSpan? span)
+    {
+        if (span is null)
+        {
+            return "not measured";
+        }
+
+        return string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{span.Value.TotalMilliseconds:F2} ms");
     }
 
     /// <summary>Stops the session even when the run was cancelled, so the console is never left waiting.</summary>

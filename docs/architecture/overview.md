@@ -17,6 +17,11 @@ choice is weighed against both, and a choice that costs either says so in its gu
 - **Latency budget**: every stage is measured each frame and shown in the stats overlay: network (RTP arrival),
   frame assembly, decode, upload, present. A picture is shown the moment it is decoded, on the next display refresh;
   nothing waits for a fixed playout delay beyond what the jitter of the link needs.
+- **No coarse sleeps on the network path**: a timed sleep on Windows lasts a whole ~15.6 ms timer tick. With one
+  between steps, the first live ICE run took 39 ms; without it, it took 11 ms, and the measured round trip to the
+  console on the LAN is 0.4 ms (2026-11-19). The stream's network loop wakes on a datagram's arrival, never on a
+  timer. That needs a wait-for-datagram call on the engine's transport port (an engine lane); until then the probe
+  yields the thread instead.
 - **Jitter buffer**: as small as the link allows, adapting down as soon as the link is steady; a lost packet is
   asked again (NACK) only while the answer can still arrive in time, otherwise a key picture is requested.
 - **Decode**: on a thread of its own where the platform has threads; hardware decoding where a platform offers it

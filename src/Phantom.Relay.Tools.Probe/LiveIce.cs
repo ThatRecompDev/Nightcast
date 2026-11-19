@@ -22,9 +22,9 @@ public sealed class LiveIce : ILiveIce
     private const int Other = 2;
     private const int CountKinds = 3;
 
-    private static readonly TimeSpan Step = TimeSpan.FromMilliseconds(2);
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan ListenAfterConnect = TimeSpan.FromSeconds(2);
+    /// <summary>Longer than one keep-alive interval, so the round trip is measured again on the open path.</summary>
+    private static readonly TimeSpan ListenAfterConnect = TimeSpan.FromSeconds(2.5);
 
     private readonly IXHomeSessionService _sessions;
     private readonly IDatagramTransport _transport;
@@ -49,7 +49,7 @@ public sealed class LiveIce : ILiveIce
 
         if (remote is null)
         {
-            return new IceOutcome(IceAgentState.Failed, null, TimeSpan.Zero, 0, 0, 0, 0);
+            return new IceOutcome(IceAgentState.Failed, null, TimeSpan.Zero, null, null, 0, 0, 0, 0);
         }
 
         var agent = new IceAgent(_transport, _clock, _random, local);
@@ -58,15 +58,16 @@ public sealed class LiveIce : ILiveIce
         agent.Start(remote, candidates);
 
         var counts = new int[CountKinds];
-        await PumpUntilSettledAsync(agent, counts, cancellation);
+        Pump(agent, counts, Deadline, untilSettled: true, cancellation);
         var elapsed = _clock.GetElapsedTime(start);
+        var firstRoundTrip = agent.RoundTrip;
 
         if (agent.State == IceAgentState.Connected)
         {
-            await PumpAsync(agent, counts, ListenAfterConnect, cancellation);
+            Pump(agent, counts, ListenAfterConnect, untilSettled: false, cancellation);
         }
 
-        return new IceOutcome(agent.State, agent.Selected, elapsed, candidates.Count, counts[Dtls], counts[Rtp], counts[Other]);
+        return new IceOutcome(agent.State, agent.Selected, elapsed, firstRoundTrip, agent.RoundTrip, candidates.Count, counts[Dtls], counts[Rtp], counts[Other]);
     }
 
     /// <summary>Sends our host candidate and gathers the console's from its answer and the exchange, without duplicates.</summary>
@@ -88,25 +89,25 @@ public sealed class LiveIce : ILiveIce
         return candidates;
     }
 
-    private async Task PumpUntilSettledAsync(IceAgent agent, int[] counts, CancellationToken cancellation)
-    {
-        long start = _clock.GetTimestamp();
-
-        while (agent.State == IceAgentState.Checking && _clock.GetElapsedTime(start) < Deadline)
-        {
-            PumpOnce(agent, counts);
-            await Task.Delay(Step, _clock, cancellation);
-        }
-    }
-
-    private async Task PumpAsync(IceAgent agent, int[] counts, TimeSpan length, CancellationToken cancellation)
+    /// <summary>
+    /// Pumps without sleeping: a timed sleep on Windows lasts a whole ~15.6 ms timer tick, which alone made the first
+    /// measurement 39 ms. Yielding the thread reacts to an answer within microseconds, at the cost of one busy core
+    /// for the probe's few seconds.
+    /// </summary>
+    private void Pump(IceAgent agent, int[] counts, TimeSpan length, bool untilSettled, CancellationToken cancellation)
     {
         long start = _clock.GetTimestamp();
 
         while (_clock.GetElapsedTime(start) < length)
         {
+            if (untilSettled && agent.State != IceAgentState.Checking)
+            {
+                return;
+            }
+
+            cancellation.ThrowIfCancellationRequested();
             PumpOnce(agent, counts);
-            await Task.Delay(Step, _clock, cancellation);
+            Thread.Yield();
         }
     }
 

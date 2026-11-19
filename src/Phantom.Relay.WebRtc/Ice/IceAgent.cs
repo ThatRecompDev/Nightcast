@@ -57,6 +57,11 @@ public sealed class IceAgent
 
     public IReadOnlyList<IcePair> Pairs => _pairs;
 
+    /// <summary>
+    /// The selected path's latest round trip, renewed by every keep-alive: the network part of the stream's latency.
+    /// </summary>
+    public TimeSpan? RoundTrip => _selected?.RoundTrip;
+
     /// <summary>This agent's host candidate for the signaling channel, at <paramref name="address"/> (the machine's own).</summary>
     public IceCandidate HostCandidate(uint address)
     {
@@ -153,6 +158,7 @@ public sealed class IceAgent
         }
 
         NewTransaction(_selected);
+        _selected.SentAt = now;
         Send(_selected);
         _keepAliveAt = now + Ticks(IceTiming.KeepAlive);
     }
@@ -216,6 +222,7 @@ public sealed class IceAgent
     {
         pair.Attempts++;
         pair.DueAt = now + Ticks(pair.Timeout);
+        pair.SentAt = now;
         Send(pair);
     }
 
@@ -279,6 +286,7 @@ public sealed class IceAgent
         }
 
         pair.State = IcePairState.Succeeded;
+        pair.RoundTrip = _clock.GetElapsedTime(pair.SentAt);
 
         if (State == IceAgentState.Checking)
         {
