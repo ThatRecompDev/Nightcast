@@ -57,7 +57,7 @@ public static class SctpPacket
     /// a chunk whose length does not fit it.
     /// </summary>
     [HotPath]
-    public static bool TryReadChunk(ReadOnlySpan<byte> packet, ref int offset, out byte type, out byte flags, out ReadOnlySpan<byte> value)
+    public static bool TryReadChunk(ReadOnlySpan<byte> packet, scoped ref int offset, out byte type, out byte flags, out ReadOnlySpan<byte> value)
     {
         type = 0;
         flags = 0;
@@ -85,7 +85,7 @@ public static class SctpPacket
 
     /// <summary>The parameter at <paramref name="offset"/> of a chunk's parameter list, which then moves past it.</summary>
     [HotPath]
-    public static bool TryReadParameter(ReadOnlySpan<byte> parameters, ref int offset, out ushort type, out ReadOnlySpan<byte> value)
+    public static bool TryReadParameter(ReadOnlySpan<byte> parameters, scoped ref int offset, out ushort type, out ReadOnlySpan<byte> value)
     {
         type = 0;
         value = default;

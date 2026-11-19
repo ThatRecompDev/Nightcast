@@ -51,6 +51,10 @@ public static class SctpFormat
     /// <summary>DATA: TSN, stream identifier, stream sequence number and payload protocol identifier.</summary>
     public const int DataFixedLength = 12;
 
+    public const int DataStreamOffset = 4;
+    public const int DataSequenceOffset = 6;
+    public const int DataProtocolOffset = 8;
+
     /// <summary>DATA flag: the last fragment of a message.</summary>
     public const byte EndFlag = 0x01;
 
