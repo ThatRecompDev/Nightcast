@@ -20,7 +20,9 @@ public interface IGpuPictureProducer
     /// After a decode: puts its picture in a slot of the ring and publishes it, ready at <paramref name="decodedAt"/>
     /// (a timestamp of the stream's clock), and says its visible size; false when the decode gave no picture, or the
     /// picture was not published (a repeat while frames are generated: the generated frames already fill its time).
-    /// <paramref name="kind"/> says whether the unit carried a new picture (<see cref="RepeatClassifier"/>).
+    /// <paramref name="kind"/> says whether the unit carried a new picture (<see cref="RepeatClassifier"/>);
+    /// <paramref name="rtpTimestamp"/> is the unit's RTP timestamp on the video's 90 kHz clock, the time the console
+    /// gave the picture, so the real interval between two new pictures is known whatever the network did.
     /// </summary>
-    bool Publish(PictureKind kind, long decodedAt, out int width, out int height);
+    bool Publish(PictureKind kind, long decodedAt, uint rtpTimestamp, out int width, out int height);
 }

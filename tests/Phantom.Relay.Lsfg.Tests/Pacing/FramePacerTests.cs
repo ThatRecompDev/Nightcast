@@ -153,6 +153,60 @@ public sealed class FramePacerTests
         Assert.InRange(pacer.SourceInterval.TotalMilliseconds, 39, 41);
     }
 
+    [Fact]
+    public void A_pair_25_fps_apart_at_the_source_shows_its_real_frame_half_its_own_interval_later()
+    {
+        var pacer = Started(2, Refresh120);
+        var pair = TimeSpan.FromMilliseconds(50);
+
+        pacer.OnRealFrame(1, pair);
+        _clock.Advance(TimeSpan.FromMilliseconds(18));
+
+        // At 33 ms nominal the real frame would be due by now (16.7 ms); this pair's is due at 25 ms.
+        Assert.Equal(PacedFrame.Hold, pacer.OnRefresh());
+        _clock.Advance(TimeSpan.FromMilliseconds(4));
+        Assert.Equal(PacedFrameKind.Real, pacer.OnRefresh().Kind);
+        Assert.Equal(50, pacer.SourceInterval.TotalMilliseconds, 1);
+    }
+
+    [Fact]
+    public void A_pair_after_a_long_hold_is_spread_over_two_nominal_intervals_at_most()
+    {
+        var pacer = Started(2, Refresh60);
+
+        pacer.OnRealFrame(1, TimeSpan.FromMilliseconds(100));
+
+        Assert.Equal(Source.TotalMilliseconds * 2, pacer.SourceInterval.TotalMilliseconds, 1);
+    }
+
+    [Fact]
+    public void Without_a_source_interval_the_pair_follows_the_arrivals()
+    {
+        var pacer = Started(2, Refresh60);
+
+        pacer.OnRealFrame(1, TimeSpan.Zero);
+
+        Assert.Equal(Source.TotalMilliseconds, pacer.SourceInterval.TotalMilliseconds, 1);
+    }
+
+    [Fact]
+    public void The_refresh_is_measured_from_the_calls_and_a_stall_does_not_count()
+    {
+        var pacer = new FramePacer(_clock, 2, Source, Refresh60);
+        var refresh240 = TimeSpan.FromSeconds(1.0 / 240);
+
+        for (var refresh = 0; refresh < 120; refresh++)
+        {
+            _ = pacer.OnRefresh();
+            _clock.Advance(refresh240);
+        }
+
+        _clock.Advance(TimeSpan.FromMilliseconds(200));
+        _ = pacer.OnRefresh();
+
+        Assert.Equal(refresh240.TotalMilliseconds, pacer.RefreshInterval.TotalMilliseconds, 1);
+    }
+
     // A pacer that has shown frame 0 and is a source interval later, so frame 1 starts the first pair.
     private FramePacer Started(int multiplier, TimeSpan refresh)
     {

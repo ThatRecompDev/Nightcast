@@ -144,7 +144,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     }
 
     [HotPath]
-    public bool Publish(PictureKind kind, long decodedAt, out int width, out int height)
+    public bool Publish(PictureKind kind, long decodedAt, uint rtpTimestamp, out int width, out int height)
     {
         width = _decoder.PictureWidth;
         height = _decoder.PictureHeight;
@@ -167,7 +167,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
             return false;
         }
 
-        return PublishGenerated(surface, slice, decodedAt, width, height);
+        return PublishGenerated(surface, slice, decodedAt, rtpTimestamp, width, height);
     }
 
     public bool TryTake(out GpuPicture picture)
@@ -217,9 +217,9 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
 
     // The frames generated between the last new picture and this one, each in a slot, then this one; published as one group.
     [HotPath]
-    private bool PublishGenerated(nint surface, uint slice, long decodedAt, int width, int height)
+    private bool PublishGenerated(nint surface, uint slice, long decodedAt, uint rtpTimestamp, int width, int height)
     {
-        var count = _frames.Generate(surface, slice);
+        var count = _frames.Generate(surface, slice, rtpTimestamp);
 
         for (var index = 0; index < count; index++)
         {

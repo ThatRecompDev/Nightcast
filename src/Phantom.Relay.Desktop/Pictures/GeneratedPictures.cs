@@ -7,6 +7,7 @@ using Phantom.Relay.Lsfg;
 using Phantom.Relay.Lsfg.Pacing;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Stream.Media.Gpu;
+using Phantom.Relay.WebRtc.H264;
 
 namespace Phantom.Relay.Desktop.Pictures;
 
@@ -24,8 +25,9 @@ internal sealed class GeneratedPictures : IDisposable
     private static readonly TimeSpan NominalSourceInterval = TimeSpan.FromSeconds(1.0 / 30);
 
     /// <summary>
-    /// The display refresh the pacer shows a slot early by half of: the console's own rate, since the decode thread does
-    /// not know the window's display (a faster display shows each slot within a few milliseconds of its time).
+    /// The pacer's first guess at the display's refresh (it shows a slot early by half of one), which it then measures
+    /// from its own refreshes: the engine's window says nothing of its display's rate, and the render thread's cadence
+    /// is what counts anyway.
     /// </summary>
     private static readonly TimeSpan AssumedRefresh = TimeSpan.FromSeconds(1.0 / 60);
 
@@ -36,6 +38,9 @@ internal sealed class GeneratedPictures : IDisposable
     private readonly ILogger _log;
     private readonly nint[] _generated = new nint[FrameGeneration.MaximumMultiplier - 1];
     private LsfgFrameStage? _stage;
+    private LsfgPicturePacer? _pacer;
+    private uint _lastTimestamp;
+    private bool _hasTimestamp;
     private string _state = GpuPictureReport.GenerationOff;
     private double _milliseconds;
 
@@ -61,6 +66,8 @@ internal sealed class GeneratedPictures : IDisposable
     {
         _stage?.Dispose();
         _stage = null;
+        _pacer = null;
+        _hasTimestamp = false;
         Width = width;
         Height = height;
 
@@ -88,10 +95,23 @@ internal sealed class GeneratedPictures : IDisposable
         return Paced(settings, problem);
     }
 
-    /// <summary>The frames between the last new picture and this one (slice <paramref name="slice"/> of <paramref name="surface"/>); how many.</summary>
+    /// <summary>
+    /// The frames between the last new picture and this one (slice <paramref name="slice"/> of <paramref name="surface"/>,
+    /// its unit's RTP timestamp <paramref name="rtpTimestamp"/>); how many. The pacer spreads them over the real time
+    /// between the two pictures, from their timestamps.
+    /// </summary>
     [HotPath]
-    public int Generate(nint surface, uint slice)
+    public int Generate(nint surface, uint slice, uint rtpTimestamp)
     {
+        if (_hasTimestamp && _pacer is not null)
+        {
+            var ticks = unchecked(rtpTimestamp - _lastTimestamp);
+            _pacer.NextInterval(TimeSpan.FromSeconds(ticks / (double)H264Format.ClockRate));
+        }
+
+        _lastTimestamp = rtpTimestamp;
+        _hasTimestamp = true;
+
         return _stage!.Process(surface, slice, _generated);
     }
 
@@ -145,6 +165,8 @@ internal sealed class GeneratedPictures : IDisposable
         Volatile.Write(ref _state, string.Create(CultureInfo.InvariantCulture, $"LSFG x{multiplier} ({mode}, flow {settings.ClampedFlowScale:F2})"));
         _log.GenerationOn(multiplier, mode, settings.ClampedFlowScale);
 
-        return new LsfgPicturePacer(new FramePacer(_clock, multiplier, NominalSourceInterval, AssumedRefresh));
+        _pacer = new LsfgPicturePacer(new FramePacer(_clock, multiplier, NominalSourceInterval, AssumedRefresh));
+
+        return _pacer;
     }
 }

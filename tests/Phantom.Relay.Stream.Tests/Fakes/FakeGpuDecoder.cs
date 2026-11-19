@@ -43,10 +43,13 @@ public sealed class FakeGpuDecoder : IVideoDecoder, IGpuPictureProducer
         Calls.Add("prepare");
     }
 
-    public bool Publish(PictureKind kind, long decodedAt, out int width, out int height)
+    public List<uint> RtpTimestamps { get; } = [];
+
+    public bool Publish(PictureKind kind, long decodedAt, uint rtpTimestamp, out int width, out int height)
     {
         Calls.Add("publish");
         PublishedAt.Add(decodedAt);
+        RtpTimestamps.Add(rtpTimestamp);
         Kinds.Add(kind);
         width = 2560;
         height = 1440;

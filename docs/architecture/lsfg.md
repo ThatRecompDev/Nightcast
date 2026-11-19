@@ -103,10 +103,19 @@ decoder's surfaces are bound as decoder outputs, which it accepts. Checked live 
 ## Pacing
 
 `FramePacer` (pure, on an injected clock) says what each display refresh shows. When real frame n arrives at A, with
-the smoothed source interval I and multiplier M, generated step k is due at A + (k - 1) I / M and real frame n at
+the pair's source interval I and multiplier M, generated step k is due at A + (k - 1) I / M and real frame n at
 A + (M - 1) I / M. Each refresh shows the latest due slot that is ready (within half a refresh), never going back, so
 a generated frame shows as soon as it is ready, a late one is skipped rather than shown out of order, and a real frame
 is never held back a whole source frame. A new real frame drops what was pending of the pair before.
+
+I is the real time between the pair's two pictures: the difference of their access units' RTP timestamps (90 kHz,
+handed through `IGpuPictureProducer.Publish`), so a game dipping to 25 fps spreads that pair over 50 ms and the
+delay from source to screen stays the same within it. It is capped at two nominal intervals (66.7 ms), so after a
+long hold the real picture is due before the next one is likely to come; a gap over four nominal intervals is a pause
+and falls back to the arrivals' smoothed interval, as does a pair without timestamps. The display's refresh (for the
+half-refresh tolerance) is not known to the engine's window API, so the pacer measures it from its own refresh calls
+(the render thread's cadence: what the pictures actually meet), starting from 60 Hz and smoothing; a gap over 25 ms is
+a stall and does not count.
 
 ## Settings
 
@@ -162,5 +171,6 @@ as soon as they are made, the new picture half a source interval later, as desig
 reflecting its shaders, building the pipeline) takes about a quarter of a second, once, on the decode thread, when a
 profile turns it on: a single hitch as the game starts.
 
-Not settled until a live run with a 30 fps game: the pacer's refresh is assumed at 60 Hz (the decode thread does not
-know the display's), and the repeat threshold is the owner's observation.
+Not settled until a live run with a 30 fps game: the pacing of a dipping game from the RTP timestamps (pinned by
+tests on a manual clock only) and the held-picture threshold (synthetic sizes; the second refinement's real size is
+not measured yet).
