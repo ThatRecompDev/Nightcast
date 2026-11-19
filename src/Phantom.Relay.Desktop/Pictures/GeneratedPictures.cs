@@ -110,7 +110,7 @@ internal sealed class GeneratedPictures : IDisposable
         Volatile.Write(ref _milliseconds, _stage.LastGpuMilliseconds);
     }
 
-    /// <summary>"LSFG x2 (quality) 0.5 ms" while it runs, else "LSFG off" and why; any thread.</summary>
+    /// <summary>"LSFG x2 (quality, flow 1.00) 0.5 ms" while it runs, else "LSFG off" and why; any thread.</summary>
     public string Describe()
     {
         var state = Volatile.Read(ref _state);
@@ -142,7 +142,7 @@ internal sealed class GeneratedPictures : IDisposable
 
         var multiplier = settings.ClampedMultiplier;
         var mode = settings.Mode == FrameGenerationMode.Performance ? PerformanceName : QualityName;
-        Volatile.Write(ref _state, $"LSFG x{multiplier} ({mode})");
+        Volatile.Write(ref _state, string.Create(CultureInfo.InvariantCulture, $"LSFG x{multiplier} ({mode}, flow {settings.ClampedFlowScale:F2})"));
         _log.GenerationOn(multiplier, mode, settings.ClampedFlowScale);
 
         return new LsfgPicturePacer(new FramePacer(_clock, multiplier, NominalSourceInterval, AssumedRefresh));

@@ -146,7 +146,13 @@ The desktop head runs it (the Heads layer may reference Lsfg; `Pictures/SharedPi
   the new picture itself (M - 1) / M of a source interval later.
 - **When it cannot run** (Lossless Scaling not installed, shaders that do not fit, a ring the video processor cannot
   write, the pictures read back), it logs why once and the stream plays without it. The F3 stats show
-  `LSFG x2 (quality) 0.8 ms` (the GPU time of a new picture's whole work) or `LSFG off: <reason>`.
+  `LSFG x2 (quality, flow 1.00) 0.8 ms` (the GPU time of a new picture's whole work) or `LSFG off: <reason>`.
+- **Live switching.** F4 turns it off or on again for the running stream, F5 steps through x2 quality, x2
+  performance, x2 quality at flow 0.5 and x2 performance at flow 0.5 (`FrameGenerationSwitch`, the profile's
+  multiplier kept); a new title starts from its profile again. The choice goes through `IGpuPictureSource.Use` like the
+  profile's, so the decode thread makes the new stage before its next new picture (a quarter of a second, the decode
+  thread's alone: the render thread never waits, the stream catches up after it). With the stats hidden the window's
+  title shows the choice (`Phantom.Relay | frame generation x2 performance, flow 0.50`).
 
 Measured on the owner's RTX 4090 (2026-11-19, `LsfgFrameStageLiveTests` and a window drawing a synthetic 1440p
 30 fps stream through the engine's device): x2 quality at full flow costs 0.83 ms of GPU a new picture (both colour

@@ -29,9 +29,11 @@ namespace Phantom.Relay.App;
 /// (<see cref="PresentMeter"/>). It plays under the running game's profile, switching when the console names another
 /// title; a keyboard and mouse profile locks the mouse to the window while it has the focus (F10 frees or takes it).
 /// F3 shows the stats: as a small block over the window's top-left corner (<see cref="StatsOverlay"/>), short in the
-/// window's title and in full in the log, each rebuilt only when a new snapshot arrives. Escape closes the window, except
-/// while keyboard and mouse play, when it is the game's and Shift+Escape closes it; closing it stops the stream, and
-/// with it the session on the console.
+/// window's title and in full in the log, each rebuilt only when a new snapshot arrives. F4 turns frame generation off
+/// or on again and F5 steps through its settings (<see cref="FrameGenerationSwitch"/>), live: the decode thread makes the
+/// new stage before its next new picture, so the render thread never waits; the stats show what runs, and with the
+/// stats hidden the title shows what was chosen. Escape closes the window, except while keyboard and mouse play, when it
+/// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console.
 /// </summary>
 public sealed class StreamApplication : IApplication
 {
@@ -49,6 +51,7 @@ public sealed class StreamApplication : IApplication
     private readonly TimeProvider _clock;
     private readonly PresentMeter _meter = new();
     private readonly StatsOverlay _overlay;
+    private readonly FrameGenerationSwitch _generation = new();
     private readonly ILogger<StreamApplication> _log;
 
     private TimeSpan _now;
@@ -218,6 +221,10 @@ public sealed class StreamApplication : IApplication
                 _shownStats = null;
                 _overlay.Clear();
             }
+            else if (inputEvent.Key is Key.F4 or Key.F5)
+            {
+                SwitchGeneration(inputEvent.Key);
+            }
             else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
             {
                 _captureMouse = !_captureMouse;
@@ -251,9 +258,32 @@ public sealed class StreamApplication : IApplication
 
         _profile = profile;
         _pads.Use(profile);
-        _stream.GpuPictures?.Use(profile.FrameGeneration);
+        _stream.GpuPictures?.Use(_generation.Follow(profile.FrameGeneration));
         _reports.Reset();
         _captureMouse = KeyboardMousePlays();
+    }
+
+    /// <summary>F4 turns frame generation off or on again, F5 picks its next setting; the title shows the choice at once.</summary>
+    private void SwitchGeneration(Key key)
+    {
+        FrameGeneration settings;
+
+        if (key == Key.F4)
+        {
+            settings = _generation.Toggle();
+        }
+        else
+        {
+            settings = _generation.Next();
+        }
+
+        _stream.GpuPictures?.Use(settings);
+        _shownStats = null;
+
+        if (_log.IsEnabled(LogLevel.Information))
+        {
+            _log.GenerationChosen(_generation.Describe());
+        }
     }
 
     /// <summary>The mouse is locked to the window while it is captured and the window has the focus (F10 toggles it).</summary>
@@ -321,6 +351,10 @@ public sealed class StreamApplication : IApplication
             {
                 _log.Stats(StatsText.WithStats(stats, present, report));
             }
+        }
+        else if (_generation.Changed)
+        {
+            _window.SetTitle(StatsText.Clamp($"{StatsText.Plain(stats)} | frame generation {_generation.Describe()}"));
         }
         else
         {
