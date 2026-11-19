@@ -36,7 +36,7 @@ public static class RelayPolicy
             new Layer(Stream, ["Phantom.Relay.Stream"], [WebRtc, Profiles, Xbox]),
             new Layer(App, ["Phantom.Relay.App"], [Stream, Profiles, Xbox]),
             new Layer(Heads, ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter"], [App, Stream, Adapters, WebRtc, Profiles, Xbox]),
-            new Layer(Tools, ["Phantom.Relay.Tools.*"], [Adapters, Profiles, Xbox]),
+            new Layer(Tools, ["Phantom.Relay.Tools.*"], [Adapters, WebRtc, Profiles, Xbox]),
         ],
         ExcludedPaths: [],
         AmbientStateProjects: ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter", "Phantom.Relay.Tools.*", "*.Tests"],

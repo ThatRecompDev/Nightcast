@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.WebRtc.Ice;
 using Phantom.Relay.Xbox.Auth;
 using Phantom.Relay.Xbox.Session;
 
@@ -19,14 +20,16 @@ public sealed class ProbeRun
 
     private readonly IXboxAuthService _auth;
     private readonly IXHomeSessionService _sessions;
+    private readonly ILiveIce _ice;
     private readonly IRandomSource _random;
     private readonly TextReader _input;
     private readonly TextWriter _output;
 
-    public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, IRandomSource random, TextReader input, TextWriter output)
+    public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, ILiveIce ice, IRandomSource random, TextReader input, TextWriter output)
     {
         _auth = auth;
         _sessions = sessions;
+        _ice = ice;
         _random = random;
         _input = input;
         _output = output;
@@ -137,13 +140,30 @@ public sealed class ProbeRun
 
     private async Task OfferAsync(StreamSession session, CancellationToken cancellation)
     {
-        _output.WriteLine("Sending the probe offer (nothing will connect; this only shows what the console would send):");
-        string answer = await _sessions.ExchangeSdpAsync(session, ProbeOffer.Create(_random), cancellation);
+        var ice = IceCredentials.Create(_random);
+        _output.WriteLine("Sending the offer; the console answers:");
+        string answer = await _sessions.ExchangeSdpAsync(session, ProbeOffer.Create(ice, _random), cancellation);
 
         foreach (string line in AnswerSummary.Of(answer))
         {
             _output.WriteLine($"  {line}");
         }
+
+        _output.WriteLine("Running ICE against the console:");
+        var outcome = await _ice.RunAsync(session, ice, answer, cancellation);
+        ReportIce(outcome);
+    }
+
+    private void ReportIce(IceOutcome outcome)
+    {
+        _output.WriteLine($"  ICE: {outcome.State} after {outcome.Elapsed.TotalMilliseconds:F0} ms ({outcome.RemoteCandidates} console candidates)");
+
+        if (outcome.Selected is not null)
+        {
+            _output.WriteLine($"  selected path: {outcome.Selected}");
+        }
+
+        _output.WriteLine($"  then received: {outcome.DtlsDatagrams} DTLS, {outcome.RtpDatagrams} RTP/RTCP, {outcome.OtherDatagrams} other datagrams");
     }
 
     /// <summary>Stops the session even when the run was cancelled, so the console is never left waiting.</summary>

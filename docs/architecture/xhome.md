@@ -62,6 +62,11 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
   H.264 **Main, level 4.2 (`4d002a`)** first and Constrained Baseline (`42e02a`) second, both with
   `level-asymmetry-allowed=1;packetization-mode=1`; neither High nor AV1. Sound: Opus 48 kHz stereo,
   `minptime=10;useinbandfec=1`. The data channels' SCTP line is accepted.
+- **ICE connects**: with our credentials in the offer and our host candidate sent through the ICE exchange, Relay's
+  own ICE agent selected a direct LAN path to the console (its host candidate, port 9002) in 39 ms; the console gave
+  two candidates.
+- The console's answer says `a=setup:passive` on every m-line: the client is the DTLS client and starts the handshake;
+  the console sends nothing until it does.
 - No `/connect` call was needed for the console to answer the offer (open clients send one with a user token to
   `{session}/connect`; whether the console offering needs it to carry media is not known yet).
 

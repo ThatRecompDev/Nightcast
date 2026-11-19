@@ -2,6 +2,7 @@
 
 using System.Text;
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.WebRtc.Ice;
 
 namespace Phantom.Relay.Tools.Probe;
 
@@ -31,12 +32,17 @@ public static class ProbeOffer
     private const string MainProfileLevel = "4d0033";
     private const string BaselineProfileLevel = "42e033";
 
+    /// <summary>An offer with random ICE credentials: for a probe that only reads the answer.</summary>
     public static string Create(IRandomSource random)
     {
-        string ufrag = Hex(random, UfragBytes);
-        string password = Hex(random, PasswordBytes);
+        return Create(new IceCredentials(Hex(random, UfragBytes), Hex(random, PasswordBytes)), random);
+    }
+
+    /// <summary>An offer carrying <paramref name="ice"/>, so a live ICE agent with those credentials can answer checks.</summary>
+    public static string Create(IceCredentials ice, IRandomSource random)
+    {
         string fingerprint = Fingerprint(random);
-        string transport = $"a=ice-ufrag:{ufrag}{Line}a=ice-pwd:{password}{Line}a=ice-options:trickle{Line}a=fingerprint:sha-256 {fingerprint}{Line}a=setup:actpass{Line}";
+        string transport = $"a=ice-ufrag:{ice.Ufrag}{Line}a=ice-pwd:{ice.Password}{Line}a=ice-options:trickle{Line}a=fingerprint:sha-256 {fingerprint}{Line}a=setup:actpass{Line}";
 
         var sdp = new StringBuilder();
         sdp.Append($"v=0{Line}o=- {random.NextUInt32()} 2 IN IP4 127.0.0.1{Line}s=-{Line}t=0 0{Line}");

@@ -3,6 +3,8 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Phantom.Engine.Content.Storage;
 using Phantom.Engine.Core.Randomness;
+using Phantom.Engine.Net.Transport;
+using Phantom.Engine.Net.Transport.Udp;
 using Phantom.Engine.Platform.Desktop.Storage;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Profiles;
@@ -22,6 +24,9 @@ public static class ProbeProgram
 
     private const string SignOutArgument = "--sign-out";
     private const string Locale = "en-US";
+
+    /// <summary>Large enough for any datagram WebRTC sends on a LAN path (the Ethernet MTU) with room to spare.</summary>
+    private const int MaxDatagramLength = 2048;
 
     public static async Task<int> Main(string[] args)
     {
@@ -45,7 +50,19 @@ public static class ProbeProgram
 
         var sessions = new XHomeSessionService(http, auth, clock, NullLogger<XHomeSessionService>.Instance);
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
-        var run = new ProbeRun(auth, sessions, random, Console.In, Console.Out);
+        uint? hostAddress = LocalAddress.Find();
+
+        if (hostAddress is null)
+        {
+            Console.WriteLine("No network with a default gateway: connect this PC to the network the console is on.");
+
+            return ProbeRun.Refused;
+        }
+
+        // A UDP socket on any address and a free port, for ICE and everything after it.
+        using var transport = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
+        var ice = new LiveIce(sessions, transport, hostAddress.Value, clock, random);
+        var run = new ProbeRun(auth, sessions, ice, random, Console.In, Console.Out);
 
         return await run.RunAsync(Settings(args, clock), cancellation.Token);
     }

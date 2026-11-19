@@ -12,6 +12,7 @@ public sealed class ProbeRunTests : IDisposable
 
     private readonly FakeAuth _auth = new() { IsSignedIn = true };
     private readonly FakeSessions _sessions = new();
+    private readonly FakeLiveIce _ice = new();
     private readonly StringWriter _output = new();
 
     [Fact]
@@ -29,6 +30,20 @@ public sealed class ProbeRunTests : IDisposable
 
         Assert.Contains("  a=rtpmap:102 H264/90000", _output.ToString(), StringComparison.Ordinal);
         Assert.Contains("session: Provisioned", _output.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ice_runs_with_the_credentials_the_offer_carried_and_its_outcome_is_shown()
+    {
+        _sessions.Consoles.Add(new XboxConsole("F4001", "Living room", "XboxSeriesX", "On", true));
+
+        await Run(string.Empty);
+
+        Assert.Contains($"a=ice-ufrag:{_ice.Local!.Ufrag}", _sessions.Offer, StringComparison.Ordinal);
+        Assert.Contains($"a=ice-pwd:{_ice.Local.Password}", _sessions.Offer, StringComparison.Ordinal);
+        Assert.Equal(_sessions.Answer, _ice.Answer);
+        Assert.Contains("ICE: Connected after 42 ms (2 console candidates)", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("then received: 3 DTLS", _output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -94,7 +109,7 @@ public sealed class ProbeRunTests : IDisposable
 
     private Task<int> Run(string input)
     {
-        var run = new ProbeRun(_auth, _sessions, new SeededRandomSource(1), new StringReader(input), _output);
+        var run = new ProbeRun(_auth, _sessions, _ice, new SeededRandomSource(1), new StringReader(input), _output);
 
         return run.RunAsync(Settings, CancellationToken.None);
     }

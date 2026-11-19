@@ -8,7 +8,7 @@ namespace Phantom.Relay.Tools.Probe;
 /// </summary>
 public static class AnswerSummary
 {
-    private static readonly string[] Kept = ["m=", "b=", "a=rtpmap:", "a=fmtp:", "a=imageattr:", "a=framerate:", "a=sendonly", "a=recvonly", "a=sendrecv", "a=inactive"];
+    private static readonly string[] Kept = ["m=", "b=", "a=rtpmap:", "a=fmtp:", "a=imageattr:", "a=framerate:", "a=sendonly", "a=recvonly", "a=sendrecv", "a=inactive", "a=setup:"];
 
     public static IReadOnlyList<string> Of(string answer)
     {
