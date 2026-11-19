@@ -60,7 +60,7 @@ public sealed class LiveIce : ILiveIce
             return new IceOutcome(IceAgentState.Failed, null, TimeSpan.Zero, null, null, 0, 0, 0, 0);
         }
 
-        using var link = new ConsoleLink(_transport, local, _video, _audio, _pads, _clock, _random, _feedback);
+        using var link = new ConsoleLink(_transport, local, _video, _audio, _pads, new RumbleMailbox(), _clock, _random, _feedback);
         var exchanged = await _sessions.ExchangeIceAsync(session, [link.HostCandidate(_hostAddress)], cancellation);
         long start = _clock.GetTimestamp();
         link.StartIce(answer, exchanged);

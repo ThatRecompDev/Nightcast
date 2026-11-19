@@ -285,7 +285,7 @@ public static class DesktopProgram
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, clock, log);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, pads as IGamepadFeedback, clock, log);
         var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);

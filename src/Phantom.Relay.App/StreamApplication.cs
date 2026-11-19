@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Phantom.Engine.Core;
 using Phantom.Engine.Graphics.Devices;
 using Phantom.Engine.Hosting;
+using Phantom.Engine.Hosting.Gamepads;
 using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Ui.Text;
 using Phantom.Relay.App.Input;
@@ -53,6 +54,7 @@ public sealed class StreamApplication : IApplication
     private readonly StatsOverlay _overlay;
     private readonly FrameGenerationSwitch _generation = new();
     private readonly ILogger<StreamApplication> _log;
+    private readonly RumblePlayer _rumble;
 
     private TimeSpan _now;
     private bool _showStats;
@@ -61,10 +63,12 @@ public sealed class StreamApplication : IApplication
     private StreamProfile? _profile;
     private bool _captureMouse;
 
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, TimeProvider clock, ILogger<StreamApplication> log)
+    /// <summary>The window's app; <c>motors</c> run the console's vibration on the pads, null where the pads have none.</summary>
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, TimeProvider clock, ILogger<StreamApplication> log)
     {
         _log = log;
         _clock = clock;
+        _rumble = new RumblePlayer(motors);
 
         _device = device;
         _window = window;
@@ -90,8 +94,23 @@ public sealed class StreamApplication : IApplication
         HandleKeys(input);
         CaptureMouse(input);
         SendPad(input, seconds);
+        PlayRumble();
+
         Present();
         ShowTitle();
+    }
+
+    /// <summary>The console's vibration since the last frame, on the pad being played; the motors stop on time.</summary>
+    private void PlayRumble()
+    {
+        int slot = _pads.PlayedSlot;
+
+        while (_stream.TryTakeRumble(out var report))
+        {
+            _rumble.Play(in report, slot, _now);
+        }
+
+        _rumble.Tick(slot, _now);
     }
 
     public void DeviceLost()
@@ -105,6 +124,7 @@ public sealed class StreamApplication : IApplication
     /// <summary>The window closes: the stream ends cleanly, the session stopped on the console.</summary>
     public void Cleanup()
     {
+        _rumble.Stop();
         _picture.Cleanup();
         _overlay.Cleanup();
         _stream.Stop();

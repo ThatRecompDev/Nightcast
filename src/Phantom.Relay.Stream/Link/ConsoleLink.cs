@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+﻿// Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Org.BouncyCastle.Security;
 using Org.BouncyCastle.Tls;
@@ -40,6 +40,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private readonly DecodeWorker _video;
     private readonly IStreamAudioSink _audio;
     private readonly PadMailbox _pads;
+    private readonly RumbleMailbox _rumble;
     private readonly TimeProvider _clock;
     private readonly IRandomSource _random;
     private readonly BitrateFeedback _feedback;
@@ -57,12 +58,13 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private DatagramEndpoint? _path;
 
     /// <summary>The media path sends the bitrate <paramref name="feedback"/> the offer proposed.</summary>
-    public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, PadMailbox pads, TimeProvider clock, IRandomSource random, BitrateFeedback feedback)
+    public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, PadMailbox pads, RumbleMailbox rumble, TimeProvider clock, IRandomSource random, BitrateFeedback feedback)
     {
         _transport = transport;
         _video = video;
         _audio = audio;
         _pads = pads;
+        _rumble = rumble;
 
         // The thread's clock and randomness, and the feedback the offer proposed.
         _clock = clock;
@@ -260,7 +262,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
         _session = session;
         _path = _agent.Selected;
         Media = new MediaReceiver(_client!.Profile!.Value, _client.KeyingMaterial!, VideoPayloads.Of(_answer), this, _video, _audio, _clock, _feedback, AnswerFeedback.Of(_answer).TransportWideId);
-        Channels = new ConsoleChannels(session, _bridge!, _pads, _clock, _random);
+        Channels = new ConsoleChannels(session, _bridge!, _pads, _rumble, _clock, _random);
         Channels.Open();
         _channelsStartedAt = _clock.GetTimestamp();
     }

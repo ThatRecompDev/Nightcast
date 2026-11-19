@@ -46,34 +46,49 @@ public sealed class PhysicalPad
     [HotPath]
     public XboxPadState Read(ReadOnlySpan<GamepadState> pads, int? slot)
     {
+        PlayedSlot = Choose(pads, slot);
+
+        if (PlayedSlot == NoSlot)
+        {
+            return default;
+        }
+
+        return Map(in pads[PlayedSlot]);
+    }
+
+    /// <summary>The engine's slot the last <see cref="Read"/> played, for the console's vibration; -1 when none.</summary>
+    public int PlayedSlot { get; private set; } = NoSlot;
+
+    /// <summary>The chosen slot, else the pad last used, else the first connected; <see cref="NoSlot"/> when none fits.</summary>
+    [HotPath]
+    private int Choose(ReadOnlySpan<GamepadState> pads, int? slot)
+    {
         if (slot.HasValue)
         {
-            var chosen = slot.Value;
-
-            if (chosen < 0 || chosen >= pads.Length)
+            if (slot.Value < 0 || slot.Value >= pads.Length)
             {
-                return default;
+                return NoSlot;
             }
 
-            return Map(in pads[chosen]);
+            return slot.Value;
         }
 
         FollowUsedPad(pads);
 
         if (_usedSlot >= 0 && _usedSlot < pads.Length && pads[_usedSlot].Connected)
         {
-            return Map(in pads[_usedSlot]);
+            return _usedSlot;
         }
 
-        foreach (ref readonly var pad in pads)
+        for (var index = 0; index < pads.Length; index++)
         {
-            if (pad.Connected)
+            if (pads[index].Connected)
             {
-                return Map(in pad);
+                return index;
             }
         }
 
-        return default;
+        return NoSlot;
     }
 
     /// <summary>The slot of the first connected pad used in this frame, kept until another is used.</summary>

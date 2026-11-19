@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+﻿// Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Security;
@@ -61,6 +61,7 @@ public sealed class StreamConnection : IDisposable
     private readonly IRandomSource _random;
     private readonly ILogger<StreamConnection> _log;
     private readonly PadMailbox _pads = new();
+    private readonly RumbleMailbox _rumble = new();
     private readonly PictureMailbox _pictures = new();
     private readonly CancellationTokenSource _stop = new();
     private readonly StreamStatsMeter _meter;
@@ -145,6 +146,15 @@ public sealed class StreamConnection : IDisposable
         _waker.Wake();
     }
 
+    /// <summary>The console's next vibration not yet taken, from any thread (the window's, which drives the pads).</summary>
+    public bool TryTakeRumble(out RumbleReport report)
+    {
+        return _rumble.TryTake(out report);
+    }
+
+    /// <summary>Vibration reports the console sent so far.</summary>
+    public long RumbleReports => _rumble.Received;
+
     /// <summary>Ends the stream and stops the session on the console; returns once the network thread ended.</summary>
     public void Stop()
     {
@@ -211,7 +221,7 @@ public sealed class StreamConnection : IDisposable
         }
 
         LogFeedback(answer);
-        using var link = new ConsoleLink(_transport, local, video, _audio, _pads, _clock, _random, _feedback);
+        using var link = new ConsoleLink(_transport, local, video, _audio, _pads, _rumble, _clock, _random, _feedback);
         var exchanged = Wait(_sessions.ExchangeIceAsync(session, [link.HostCandidate(_hostAddress)], _stop.Token));
         link.StartIce(answer, exchanged);
         Publish(Stats with { State = StreamState.Connecting });

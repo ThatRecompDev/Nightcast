@@ -32,6 +32,7 @@ public sealed class ConsoleChannels
     private readonly DataChannelHub _hub;
     private readonly InputReportWriter _reports;
     private readonly PadMailbox _pads;
+    private readonly RumbleMailbox _rumble;
     private readonly IRandomSource _random;
     private readonly byte[] _record;
     private readonly byte[] _report = new byte[InputReportWriter.GamepadReportSize];
@@ -45,11 +46,12 @@ public sealed class ConsoleChannels
     private DataChannel? _control;
     private bool _established;
 
-    public ConsoleChannels(DtlsTransport dtls, DtlsDatagramBridge bridge, PadMailbox pads, TimeProvider clock, IRandomSource random)
+    public ConsoleChannels(DtlsTransport dtls, DtlsDatagramBridge bridge, PadMailbox pads, RumbleMailbox rumble, TimeProvider clock, IRandomSource random)
     {
         _dtls = dtls;
         _bridge = bridge;
         _pads = pads;
+        _rumble = rumble;
         _random = random;
 
         // SCTP over the session, the channels on it, the input reports and the room for one record.
@@ -171,6 +173,16 @@ public sealed class ConsoleChannels
         while (_hub.TryReceive(out var channel, out bool isString, out var payload))
         {
             Received++;
+
+            // The console's vibration comes as binary reports on the input channel, read before the payload is released.
+            if (!isString && channel.Label == XHomeChannels.InputLabel && RumbleReportReader.TryRead(payload, out var rumble))
+            {
+                _hub.Release();
+                _rumble.Post(in rumble);
+
+                continue;
+            }
+
             string text = Encoding.UTF8.GetString(payload);
             Note(channel.Label, isString, text);
             _hub.Release();

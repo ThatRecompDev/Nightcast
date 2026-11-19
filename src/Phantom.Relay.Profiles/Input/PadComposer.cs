@@ -36,6 +36,9 @@ public sealed class PadComposer
     /// <summary>The engine's pad slot played; null (the default) plays the first connected one.</summary>
     public int? Slot { get; set; }
 
+    /// <summary>The engine's slot of the physical pad played in the last frame, for the console's vibration; -1 when none.</summary>
+    public int PlayedSlot => _pad.PlayedSlot;
+
     /// <summary>The hands the console's pad follows now.</summary>
     public PadSource Source { get; private set; }
 

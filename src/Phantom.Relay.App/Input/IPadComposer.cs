@@ -17,6 +17,9 @@ public interface IPadComposer
     /// <summary>Which hands the pad follows now: the controller, or keyboard and mouse.</summary>
     PadSource Source { get; }
 
+    /// <summary>The engine's slot of the physical pad played in the last frame, where the console's vibration goes; -1 when none.</summary>
+    int PlayedSlot { get; }
+
     XboxPadState Compose(InputFrame input, float elapsedSeconds);
 
     /// <summary>Plays under <paramref name="profile"/> from the next frame on.</summary>
