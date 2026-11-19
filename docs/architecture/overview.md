@@ -53,6 +53,7 @@ project lands.
 | WebRTC: ICE, DTLS-SRTP, SCTP data channels, RTP | engine lane `Net.WebRtc` (to be opened through the coordinator); the browser's own RTCPeerConnection behind the same port |
 | H.264 pictures | engine `Media.Vpx` (openh264), drawn by `Media`'s YCbCr shader |
 | Opus sound | engine `Audio` (our own decoder) and its output port |
+| Sound to the controller's headphone jack | engine lane (planned): choosing the audio output device. The engine's sokol_audio output plays to the system default only. A profile then sends sound to the default, the pad in use or a named device. The jack is a device where the system exposes it: an Xbox pad over USB or the Xbox Wireless Adapter, a DualSense over USB, the Steam Deck; never over Bluetooth on Windows. The headset's microphone can later carry party chat (the `chat` channel) |
 | Pads, rumble, light | engine `Hosting` gamepads; DualSense/DS4 on the desktop and the browser's Gamepad API: engine lane (on top of `xinput-rumble`) |
 | Frame generation and upscaling | engine lane (later): optical-flow interpolation as a compute pass; the picture upscaler exists |
 | UI, text, storage | engine `Ui`, `Text`, `Content.Storage` |
