@@ -4,11 +4,12 @@ namespace Phantom.Relay.Xbox.Session;
 
 /// <summary>
 /// The x-ms-device-info header: the service decides from it, with the play request's OS name, which tiers this client
-/// may receive, so the client presents as the web player on a desktop browser with a 1440p display: the display it
-/// reports must never be what limits the stream's tier.
+/// may receive. Its shape is the official web player's (play.xbox.com in a desktop browser, seen 2026-11-19: the
+/// hardware block's <c>platformType</c> and <c>sdkType</c> spelled so), with a 1440p display, so the display it reports
+/// is never what limits the stream's tier.
 /// </summary>
 public static class DeviceInfo
 {
     public const string Json =
-        """{"appInfo":{"env":{"clientAppId":"www.xbox.com","clientAppType":"browser","clientAppVersion":"26.1.97","clientSdkVersion":"10.3.7","httpEnvironment":"prod","sdkInstallId":""}},"dev":{"hw":{"make":"Microsoft","model":"unknown","sdktype":"web"},"os":{"name":"windows","ver":"22631.2715","platform":"desktop"},"displayInfo":{"dimensions":{"widthInPixels":2560,"heightInPixels":1440},"pixelDensity":{"dpiX":1,"dpiY":1}},"browser":{"browserName":"chrome","browserVersion":"130.0"}}}""";
+        """{"appInfo":{"env":{"clientAppId":"play.xbox.com","clientAppType":"browser","clientSdkVersion":"placeholder","httpEnvironment":"prod","sdkInstallId":""}},"dev":{"displayInfo":{"dimensions":{"heightInPixels":1440,"widthInPixels":2560},"pixelDensity":{"dpiX":1,"dpiY":1}},"browser":{"browserName":"edge","browserVersion":"157.0.4341.60"},"hw":{"make":"unknown","model":"unknown","platformType":"desktop","sdkType":"web"},"os":{"name":"windows","ver":"19.0.0","platform":"desktop"}}}""";
 }
