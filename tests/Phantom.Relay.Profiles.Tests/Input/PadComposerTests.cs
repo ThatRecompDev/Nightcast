@@ -40,6 +40,23 @@ public sealed class PadComposerTests
     }
 
     [Fact]
+    public void An_idle_virtual_pad_in_the_first_slot_never_hides_the_pad_in_use()
+    {
+        // Steam Input or a vendor's emulation: connected in slot 0, never touched; the DualSense in slot 2.
+        var pads = new TestPads();
+        pads.Connect(0, TestPads.Pad(GamepadButtons.None, Vector2.Zero, Vector2.Zero, 0f));
+        var frame = pads.Connect(2, TestPads.Pad(GamepadButtons.South, Vector2.Zero, Vector2.Zero, 0f));
+        var composer = new PadComposer(StreamProfile.Default);
+
+        var pressed = composer.Compose(frame, Frame);
+        frame = pads.Connect(2, TestPads.Pad(GamepadButtons.None, new Vector2(0.2f, 0f), Vector2.Zero, 0f));
+        var held = composer.Compose(frame, Frame);
+
+        Assert.Equal(XboxButtons.A, pressed.Buttons);
+        Assert.True(held.LeftX > 0f);
+    }
+
+    [Fact]
     public void A_chosen_slot_plays_instead_of_the_first()
     {
         var pads = new TestPads();

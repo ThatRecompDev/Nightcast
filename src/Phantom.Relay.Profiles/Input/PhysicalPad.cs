@@ -15,10 +15,13 @@ namespace Phantom.Relay.Profiles.Input;
 /// </summary>
 public sealed class PhysicalPad
 {
+    private const int NoSlot = -1;
+
     private readonly float _stickDeadZone;
     private readonly float _triggerDeadZone;
     private readonly ResponseCurve _curve;
     private readonly ButtonRemap _remap;
+    private int _usedSlot = NoSlot;
 
     public PhysicalPad(PadSettings settings)
     {
@@ -35,8 +38,10 @@ public sealed class PhysicalPad
     }
 
     /// <summary>
-    /// The pad in <paramref name="slot"/>, or in the first connected slot when it is null; the pad at rest when that
-    /// slot is empty or out of range.
+    /// The pad in <paramref name="slot"/>, or, when it is null, the connected pad the player last used (a button, or a
+    /// stick or trigger past <see cref="PadActivity.ControllerThreshold"/>), the first connected one until any is used.
+    /// A virtual pad that sits idle in an early slot (Steam Input's, a vendor's emulation) never hides the real one.
+    /// The pad at rest when the slot is empty or out of range.
     /// </summary>
     [HotPath]
     public XboxPadState Read(ReadOnlySpan<GamepadState> pads, int? slot)
@@ -53,6 +58,13 @@ public sealed class PhysicalPad
             return Map(in pads[chosen]);
         }
 
+        FollowUsedPad(pads);
+
+        if (_usedSlot >= 0 && _usedSlot < pads.Length && pads[_usedSlot].Connected)
+        {
+            return Map(in pads[_usedSlot]);
+        }
+
         foreach (ref readonly var pad in pads)
         {
             if (pad.Connected)
@@ -62,6 +74,23 @@ public sealed class PhysicalPad
         }
 
         return default;
+    }
+
+    /// <summary>The slot of the first connected pad used in this frame, kept until another is used.</summary>
+    [HotPath]
+    private void FollowUsedPad(ReadOnlySpan<GamepadState> pads)
+    {
+        for (var index = 0; index < pads.Length; index++)
+        {
+            var mapped = Map(in pads[index]);
+
+            if (PadActivity.IsUsed(in mapped, PadActivity.ControllerThreshold))
+            {
+                _usedSlot = index;
+
+                return;
+            }
+        }
     }
 
     /// <summary>One pad as the console's; a pad that is not connected is the pad at rest.</summary>
