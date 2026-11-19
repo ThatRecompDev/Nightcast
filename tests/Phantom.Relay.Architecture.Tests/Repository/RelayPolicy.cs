@@ -46,7 +46,7 @@ public static class RelayPolicy
         ExcludedPaths: [],
         AmbientStateProjects: ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter", "Phantom.Relay.Tools.*", "*.Tests"],
         MagicNumberExemptProjects: ["*.Tests"],
-        HotPathValueTypes: ["XboxPadState", "RumbleReport", "DatagramEndpoint"],
+        HotPathValueTypes: ["XboxPadState", "RumbleReport", "DatagramEndpoint", "PacedFrame"],
         GeneratorAttributes: ["JsonSerializable", "LoggerMessage", "GeneratedRegex", "JSImport", "JSExport", "LibraryImport", "GeneratedComInterface"])
     {
         CompositionRootProjects = ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter", "Phantom.Relay.Tools.*", "*.Tests"],
