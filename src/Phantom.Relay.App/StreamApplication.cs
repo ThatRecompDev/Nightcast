@@ -6,7 +6,6 @@ using Phantom.Engine.Core;
 using Phantom.Engine.Graphics.Devices;
 using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Input;
-using Phantom.Engine.Media.Rendering;
 using Phantom.Engine.Ui.Text;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Logging;
@@ -32,7 +31,9 @@ namespace Phantom.Relay.App;
 /// window's title and in full in the log, each rebuilt only when a new snapshot arrives. F4 turns frame generation off
 /// or on again and F5 steps through its settings (<see cref="FrameGenerationSwitch"/>), live: the decode thread makes the
 /// new stage before its next new picture, so the render thread never waits; the stats show what runs, and with the
-/// stats hidden the title shows what was chosen. Escape closes the window, except while keyboard and mouse play, when it
+/// stats hidden the title shows what was chosen. A window larger than the picture shows it upscaled
+/// (<see cref="StreamPicture"/>: FSR 1 unless the profile says otherwise); F6 steps through FSR 1, off and xBR, live.
+/// Fullscreen (F11, Alt+Enter) waits for the engine: its window has no fullscreen call yet. Escape closes the window, except while keyboard and mouse play, when it
 /// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console.
 /// </summary>
 public sealed class StreamApplication : IApplication
@@ -46,8 +47,7 @@ public sealed class StreamApplication : IApplication
     private readonly StreamConnection _stream;
     private readonly IPadComposer _pads;
     private readonly PadReportPolicy _reports;
-    private readonly MovieRenderer _renderer;
-    private readonly GpuPicturePresenter? _gpu;
+    private readonly StreamPicture _picture;
     private readonly TimeProvider _clock;
     private readonly PresentMeter _meter = new();
     private readonly StatsOverlay _overlay;
@@ -55,9 +55,8 @@ public sealed class StreamApplication : IApplication
     private readonly ILogger<StreamApplication> _log;
 
     private TimeSpan _now;
-    private bool _onGpu;
-    private bool _fresh;
     private bool _showStats;
+    private bool _upscalerChanged;
     private StreamStats? _shownStats;
     private StreamProfile? _profile;
     private bool _captureMouse;
@@ -73,21 +72,14 @@ public sealed class StreamApplication : IApplication
         _pads = pads;
         _reports = reports;
 
-        // Pictures read back, and those left on the GPU where the decoder can share them.
-        _renderer = new MovieRenderer(device);
+        // Pictures read back, and those left on the GPU where the decoder can share them; upscaled to a larger window.
+        _picture = new StreamPicture(device, stream);
         _overlay = new StatsOverlay(device, window, fonts, log);
-        var shared = stream.GpuPictures;
-
-        if (shared is not null)
-        {
-            _gpu = new GpuPicturePresenter(device, shared);
-        }
     }
 
     public void Initialize()
     {
-        _renderer.Initialize(PassTarget.Frame, BlendMode.None);
-        _gpu?.Initialize();
+        _picture.Initialize();
         _overlay.Initialize();
         ShowTitle();
     }
@@ -113,72 +105,40 @@ public sealed class StreamApplication : IApplication
     /// <summary>The window closes: the stream ends cleanly, the session stopped on the console.</summary>
     public void Cleanup()
     {
-        _gpu?.Cleanup();
+        _picture.Cleanup();
         _overlay.Cleanup();
-        _renderer.Cleanup();
         _stream.Stop();
     }
 
     /// <summary>
-    /// The newest picture, letterboxed to 16:9, then the commit; the GPU path's access ends after it. The CPU time of
-    /// the picture's own work (taking it, uploading or opening it, drawing it, ending its access) is measured without
-    /// the pass's start and the commit, which wait for the display; a new picture's time since its decode with them.
+    /// The newest picture, letterboxed to 16:9 (upscaled into it when the window is larger), then the commit; the GPU
+    /// path's access ends after it. The CPU time of the picture's own work (taking it, its upscaler's passes, uploading
+    /// or opening it, drawing it, ending its access) is measured without the window pass's start and the commit, which
+    /// wait for the display; a new picture's time since its decode with them.
     /// </summary>
     private void Present()
     {
         long started = _clock.GetTimestamp();
-        TakePicture();
+        var destination = PictureLetterbox.Of(_window.Width, _window.Height);
+        _picture.Take();
+        _picture.Prepare(destination, _window.Width, _window.Height);
         long taken = _clock.GetTimestamp();
         _device.BeginFramePass(Black);
 
         long begun = _clock.GetTimestamp();
-        DrawPicture(PictureLetterbox.Of(_window.Width, _window.Height));
+        _picture.Draw(destination);
         long drawn = _clock.GetTimestamp();
         DrawStats();
         _device.EndPass();
         _device.Commit();
 
         long committed = _clock.GetTimestamp();
-        _gpu?.EndFrame();
+        _picture.EndFrame();
         _meter.Frame(_clock.GetElapsedTime(started, taken) + _clock.GetElapsedTime(begun, drawn) + _clock.GetElapsedTime(committed));
 
-        if (_fresh)
+        if (_picture.Fresh)
         {
-            _meter.Presented(_clock.GetElapsedTime(ReadyAt(), committed), _onGpu);
-        }
-    }
-
-    /// <summary>A new picture from either path; the GPU path's wins when both have one (the switch to it).</summary>
-    private void TakePicture()
-    {
-        _fresh = false;
-
-        if (_stream.Pictures.TryTake())
-        {
-            _onGpu = false;
-            _fresh = true;
-        }
-
-        if (_gpu is not null && _gpu.TryTake())
-        {
-            _onGpu = true;
-            _fresh = true;
-        }
-    }
-
-    private void DrawPicture(Vector4 destination)
-    {
-        if (_onGpu && _gpu is not null)
-        {
-            _gpu.Draw(destination);
-
-            return;
-        }
-
-        if (_stream.Pictures.HasPicture)
-        {
-            _renderer.Upload(_stream.Pictures.Front);
-            _renderer.Draw(destination);
+            _meter.Presented(_clock.GetElapsedTime(_picture.ReadyAt, committed), _picture.OnGpu);
         }
     }
 
@@ -190,16 +150,6 @@ public sealed class StreamApplication : IApplication
         {
             _overlay.Draw();
         }
-    }
-
-    private long ReadyAt()
-    {
-        if (_onGpu && _gpu is not null)
-        {
-            return _gpu.Current.DecodedAt;
-        }
-
-        return _stream.Pictures.FrontReadyAt;
     }
 
     private void HandleKeys(InputFrame input)
@@ -220,10 +170,15 @@ public sealed class StreamApplication : IApplication
                 _showStats = !_showStats;
                 _shownStats = null;
                 _overlay.Clear();
+                _picture.TimePasses(_showStats);
             }
             else if (inputEvent.Key is Key.F4 or Key.F5)
             {
                 SwitchGeneration(inputEvent.Key);
+            }
+            else if (inputEvent.Key == Key.F6)
+            {
+                SwitchUpscaler();
             }
             else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
             {
@@ -259,6 +214,7 @@ public sealed class StreamApplication : IApplication
         _profile = profile;
         _pads.Use(profile);
         _stream.GpuPictures?.Use(_generation.Follow(profile.FrameGeneration));
+        _picture.Use(profile.Upscaling.Method);
         _reports.Reset();
         _captureMouse = KeyboardMousePlays();
     }
@@ -284,6 +240,14 @@ public sealed class StreamApplication : IApplication
         {
             _log.GenerationChosen(_generation.Describe());
         }
+    }
+
+    /// <summary>F6 picks the next upscaler (FSR 1, off, xBR); the title shows it at once.</summary>
+    private void SwitchUpscaler()
+    {
+        _picture.Use(StreamUpscaler.Next(_picture.Upscaler));
+        _upscalerChanged = true;
+        _shownStats = null;
     }
 
     /// <summary>The mouse is locked to the window while it is captured and the window has the focus (F10 toggles it).</summary>
@@ -318,7 +282,7 @@ public sealed class StreamApplication : IApplication
     private GpuPictureReport Report()
     {
         var report = _stream.GpuPictures?.Report ?? GpuPictureReport.Idle;
-        var refusal = _gpu?.Refusal;
+        var refusal = _picture.Refusal;
 
         if (refusal is not null)
         {
@@ -341,24 +305,39 @@ public sealed class StreamApplication : IApplication
         _shownStats = stats;
         var present = _meter.Take();
 
-        if (_showStats)
+        if (!_showStats)
         {
-            var report = Report();
-            _window.SetTitle(StatsText.Title(stats, present, report));
-            _overlay.Show(StatsText.Lines(stats, present, report, _pads.Source));
+            _window.SetTitle(QuietTitle(stats));
 
-            if (_log.IsEnabled(LogLevel.Information))
-            {
-                _log.Stats(StatsText.WithStats(stats, present, report));
-            }
+            return;
         }
-        else if (_generation.Changed)
+
+        var report = Report();
+        var upscale = _picture.Describe();
+        _window.SetTitle(StatsText.Title(stats, present, report, upscale));
+        _overlay.Show(StatsText.Lines(stats, present, report, _pads.Source, upscale));
+
+        if (_log.IsEnabled(LogLevel.Information))
         {
-            _window.SetTitle(StatsText.Clamp($"{StatsText.Plain(stats)} | frame generation {_generation.Describe()}"));
+            _log.Stats(StatsText.WithStats(stats, present, report, upscale));
         }
-        else
+    }
+
+    /// <summary>The title with the stats hidden: the plain one, and what F4, F5 or F6 chose once they were used.</summary>
+    private string QuietTitle(StreamStats stats)
+    {
+        var title = StatsText.Plain(stats);
+
+        if (_generation.Changed)
         {
-            _window.SetTitle(StatsText.Plain(stats));
+            title = $"{title} | frame generation {_generation.Describe()}";
         }
+
+        if (_upscalerChanged)
+        {
+            title = $"{title} | {_picture.Describe()}";
+        }
+
+        return StatsText.Clamp(title);
     }
 }

@@ -55,6 +55,20 @@ public sealed class StatsTextTests
     }
 
     [Fact]
+    public void The_upscaler_shows_by_name_in_the_title_and_whole_in_the_block_and_the_log()
+    {
+        var report = new GpuPictureReport(GpuPictureReport.ZeroCopy, "LSFG off");
+        const string Upscale = "FSR 1 → 3840x2160 0.21 ms";
+
+        string title = StatsText.Title(Streaming, Present, report, Upscale);
+        string[] lines = StatsText.Lines(Streaming, Present, report, PadSource.Controller, Upscale);
+
+        Assert.EndsWith(" | lost 2 | FSR 1", title, StringComparison.Ordinal);
+        Assert.Equal(Upscale, lines[^2]);
+        Assert.Contains($"LSFG off | {Upscale} | RTT", StatsText.WithStats(Streaming, Present, report, Upscale), StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void The_titles_stats_fit_the_windows_title()
     {
         var report = new GpuPictureReport(GpuPictureReport.ZeroCopy, "LSFG x2 (quality) 0.8 ms");

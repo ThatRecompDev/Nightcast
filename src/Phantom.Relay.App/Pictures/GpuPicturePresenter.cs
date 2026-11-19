@@ -13,7 +13,7 @@ namespace Phantom.Relay.App.Pictures;
 /// (<see cref="GpuTextureFeatures.SharedTextures"/>) and says its adapter: no read-back and no upload. At
 /// <see cref="Initialize"/> it offers the adapter to the source; it opens the source's ring once (again when a new ring
 /// comes), and each frame takes the picture to show (<see cref="TryTake"/>), draws it inside its access, its padded
-/// slot cropped to the picture (<see cref="Draw"/>), and after the frame's commit ends the access and hands the read's
+/// slot cropped to the picture (<see cref="Draw(Vector4, bool)"/>: into the window's pass, or the upscaler's target), and after the frame's commit ends the access and hands the read's
 /// end back to the source (<see cref="EndFrame"/>). A device without the feature, or a ring it refuses, leaves the
 /// pictures to the CPU path (the source is told so).
 /// </summary>
@@ -24,6 +24,7 @@ public sealed class GpuPicturePresenter
     private readonly IGraphicsDevice _device;
     private readonly IGpuPictureSource _source;
     private readonly Nv12PictureRenderer _renderer;
+    private readonly Nv12PictureRenderer _offscreen;
     private GpuSharedTexture[] _imports = [];
     private GpuSharedFence _fence;
     private GpuPicture _current;
@@ -36,6 +37,7 @@ public sealed class GpuPicturePresenter
         _device = device;
         _source = source;
         _renderer = new Nv12PictureRenderer(device);
+        _offscreen = new Nv12PictureRenderer(device);
     }
 
     /// <summary>Whether a picture came this way and is on screen.</summary>
@@ -60,6 +62,7 @@ public sealed class GpuPicturePresenter
         }
 
         _renderer.Initialize(PassTarget.Frame, BlendMode.None);
+        _offscreen.Initialize(PassTarget.Offscreen, BlendMode.None);
         _enabled = true;
         _source.Offer(capabilities.AdapterLuid);
     }
@@ -79,9 +82,19 @@ public sealed class GpuPicturePresenter
         return true;
     }
 
-    /// <summary>Draws the picture on screen into <paramref name="destination"/> of the open pass, inside its access; false when its ring is not open.</summary>
+    /// <summary>Draws the picture on screen into <paramref name="destination"/> of the window's pass, inside its access; false when its ring is not open.</summary>
     [HotPath]
     public bool Draw(Vector4 destination)
+    {
+        return Draw(destination, offscreen: false);
+    }
+
+    /// <summary>
+    /// Draws the picture on screen into <paramref name="destination"/> of the open pass, inside its access: the window's,
+    /// or an offscreen target's (<paramref name="offscreen"/>: the upscaler's); false when its ring is not open.
+    /// </summary>
+    [HotPath]
+    public bool Draw(Vector4 destination, bool offscreen)
     {
         if (!HasPicture || !EnsureOpened())
         {
@@ -92,8 +105,15 @@ public sealed class GpuPicturePresenter
         _device.BeginSharedAccess(texture, _fence, _current.ReadyValue);
         _open = true;
 
-        _renderer.Colour = _current.Colour;
-        _renderer.Draw(texture, destination, Crop(texture));
+        var renderer = _renderer;
+
+        if (offscreen)
+        {
+            renderer = _offscreen;
+        }
+
+        renderer.Colour = _current.Colour;
+        renderer.Draw(texture, destination, Crop(texture));
 
         return true;
     }
@@ -117,6 +137,7 @@ public sealed class GpuPicturePresenter
         EndFrame();
         Close();
         _renderer.Cleanup();
+        _offscreen.Cleanup();
         _enabled = false;
     }
 

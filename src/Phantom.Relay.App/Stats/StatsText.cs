@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+﻿// Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Globalization;
 using System.Text;
@@ -20,6 +20,7 @@ namespace Phantom.Relay.App.Stats;
 public static class StatsText
 {
     private const string NotMeasured = "-";
+    private const string UpscaleArrow = "→";
     private const string FullRate = "every picture new";
     private const string HalfRate = "every other repeated";
     private const string Ellipsis = "...";
@@ -52,14 +53,14 @@ public static class StatsText
     /// The window's title with the stats, short enough for a title: sokol keeps 128 bytes of UTF-8 with the terminator
     /// and drops a longer title whole. The full line (<see cref="WithStats"/>) goes to the log.
     /// </summary>
-    public static string Title(StreamStats stats, PresentStats present, GpuPictureReport pictures)
+    public static string Title(StreamStats stats, PresentStats present, GpuPictureReport pictures, string? upscale = null)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(pictures);
 
         string title = string.Create(
             CultureInfo.InvariantCulture,
-            $"{Plain(stats)} | {stats.FramesReceivedPerSecond:F0} fps, {stats.NewPicturesPerSecond:F0} new | to screen {Milliseconds(present.DecodeToPresent)} | {PathShort(pictures.Path)} | {Before(pictures.FrameGeneration)} | RTT {Milliseconds(stats.IceRoundTrip)} | lost {stats.PacketsLost}");
+            $"{Plain(stats)} | {stats.FramesReceivedPerSecond:F0} fps, {stats.NewPicturesPerSecond:F0} new | to screen {Milliseconds(present.DecodeToPresent)} | {PathShort(pictures.Path)} | {Before(pictures.FrameGeneration)} | RTT {Milliseconds(stats.IceRoundTrip)} | lost {stats.PacketsLost}{Part(Filter(upscale))}");
         string withBitrate = string.Create(CultureInfo.InvariantCulture, $"{title} | {stats.VideoMegabitsPerSecond:F1} Mbit/s");
 
         // The video bitrate goes last, and only when the whole title still fits.
@@ -91,20 +92,20 @@ public static class StatsText
     }
 
     /// <summary>The full stats line, for the log.</summary>
-    public static string WithStats(StreamStats stats, PresentStats present, GpuPictureReport pictures)
+    public static string WithStats(StreamStats stats, PresentStats present, GpuPictureReport pictures, string? upscale = null)
     {
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded ({stats.NewPicturesPerSecond:F0} new, {stats.RepeatedPicturesPerSecond:F0} repeated, {Cadence(stats.Cadence)}) | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)} | to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)} | {pictures.Path} | {pictures.FrameGeneration} | video {stats.VideoMegabitsPerSecond:F1} Mbit/s, sound {stats.AudioMegabitsPerSecond:F2} Mbit/s | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
+            $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded ({stats.NewPicturesPerSecond:F0} new, {stats.RepeatedPicturesPerSecond:F0} repeated, {Cadence(stats.Cadence)}) | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)} | to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)} | {pictures.Path} | {pictures.FrameGeneration}{Part(upscale)} | video {stats.VideoMegabitsPerSecond:F1} Mbit/s, sound {stats.AudioMegabitsPerSecond:F2} Mbit/s | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
     }
 
     /// <summary>
     /// The stats as the short lines of the block on screen (<see cref="StatsOverlay"/>): where the stream is and the
     /// picture's size; the frames in and decoded; the decode; the time to screen; how the pictures come; frame
-    /// generation; the path's times; the counts; and which hands the console's pad follows. A line longer than
+    /// generation; the path's times; the counts; the upscaler, when one is given; and which hands the console's pad follows. A line longer than
     /// <see cref="MaxLineCharacters"/> is cut with an ellipsis (the full text is in the log line).
     /// </summary>
-    public static string[] Lines(StreamStats stats, PresentStats present, GpuPictureReport pictures, PadSource source)
+    public static string[] Lines(StreamStats stats, PresentStats present, GpuPictureReport pictures, PadSource source, string? upscale = null)
     {
         ArgumentNullException.ThrowIfNull(stats);
         ArgumentNullException.ThrowIfNull(pictures);
@@ -121,6 +122,7 @@ public static class StatsText
             Shorten(pictures.FrameGeneration),
             string.Create(invariant, $"RTT {Milliseconds(stats.IceRoundTrip)}, DTLS {Milliseconds(stats.DtlsTime)}, video {stats.VideoMegabitsPerSecond:F1} Mbit/s, sound {stats.AudioMegabitsPerSecond:F2}"),
             string.Create(invariant, $"lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}"),
+            .. Optional(upscale),
             string.Create(invariant, $"input: {Hands(source)}"),
         ];
     }
@@ -191,6 +193,41 @@ public static class StatsText
         }
 
         return text[..colon];
+    }
+
+    /// <summary>The upscaler's account as a line of its own, or no line without one.</summary>
+    private static string[] Optional(string? upscale)
+    {
+        if (upscale is null)
+        {
+            return [];
+        }
+
+        return [Shorten(upscale)];
+    }
+
+    /// <summary>" | " and the upscaler's account, or nothing without one.</summary>
+    private static string Part(string? upscale)
+    {
+        if (upscale is null)
+        {
+            return string.Empty;
+        }
+
+        return $" | {upscale}";
+    }
+
+    /// <summary>The filter's name of the upscaler's account: "FSR 1" of "FSR 1 → 3840x2160 0.30 ms".</summary>
+    private static string? Filter(string? upscale)
+    {
+        int arrow = upscale?.IndexOf(UpscaleArrow, StringComparison.Ordinal) ?? -1;
+
+        if (arrow < 0)
+        {
+            return upscale;
+        }
+
+        return upscale![..arrow].TrimEnd();
     }
 
     private static string Cadence(PictureCadence cadence)

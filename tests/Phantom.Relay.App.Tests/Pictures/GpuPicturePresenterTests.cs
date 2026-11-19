@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Numerics;
-using Phantom.Engine.Graphics.Devices;
 using Phantom.Engine.Media.Video;
 using Phantom.Engine.Testing.Graphics;
 using Phantom.Relay.App.Pictures;

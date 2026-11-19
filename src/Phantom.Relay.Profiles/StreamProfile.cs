@@ -24,7 +24,7 @@ public sealed record StreamProfile(
     public bool IsDefault => TitleIds.Count == 0;
 
     /// <summary>
-    /// The profile used when nothing else matches: 1440p, no frame generation, the sharp upscaler, the pad alone
+    /// The profile used when nothing else matches: 1440p, no frame generation, FSR 1 to a larger window, the pad alone
     /// (keyboard and mouse off). A profile that switches keyboard and mouse on still plays the pad, merged with them
     /// (<see cref="Input.PadComposer"/>).
     /// </summary>
