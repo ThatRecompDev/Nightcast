@@ -17,6 +17,7 @@
     <ProjectReference Include="../Phantom.Relay.App/Phantom.Relay.App.csproj" />
     <ProjectReference Include="../Phantom.Relay.Audio/Phantom.Relay.Audio.csproj" />
     <ProjectReference Include="../Phantom.Relay.Http.Bcl/Phantom.Relay.Http.Bcl.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Lsfg/Phantom.Relay.Lsfg.csproj" />
     <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
     <ProjectReference Include="../Phantom.Relay.Pads.Windows/Phantom.Relay.Pads.Windows.csproj" />
     <ProjectReference Include="../Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />

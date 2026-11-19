@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.Profiles;
 using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.App.Tests.Pictures;
@@ -22,6 +23,13 @@ public sealed class FakeGpuPictures : IGpuPictureSource
     public void Offer(long adapterLuid)
     {
         OfferedLuid = adapterLuid;
+    }
+
+    public FrameGeneration? Used { get; private set; }
+
+    public void Use(FrameGeneration settings)
+    {
+        Used = settings;
     }
 
     public void Withdraw(string reason)

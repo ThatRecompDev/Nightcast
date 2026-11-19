@@ -40,7 +40,8 @@ public static class RelayPolicy
             new Layer(Lsfg, ["Phantom.Relay.Lsfg"], [Adapters]),
             new Layer(Stream, ["Phantom.Relay.Stream"], [Audio, WebRtc, Profiles, Xbox]),
             new Layer(App, ["Phantom.Relay.App"], [Stream, Audio, WebRtc, Profiles, Xbox]),
-            new Layer(Heads, ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter"], [App, Stream, Adapters, Audio, WebRtc, Profiles, Xbox]),
+            // The desktop head runs the optional frame generation on its decoder's GPU path (docs/architecture/lsfg.md).
+            new Layer(Heads, ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter"], [App, Stream, Lsfg, Adapters, Audio, WebRtc, Profiles, Xbox]),
             new Layer(Tools, ["Phantom.Relay.Tools.*"], [Stream, Adapters, Audio, WebRtc, Profiles, Xbox]),
         ],
         ExcludedPaths: [],

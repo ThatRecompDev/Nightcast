@@ -63,6 +63,26 @@ internal sealed unsafe class D3D11TestDevice : IDisposable
         return pixels;
     }
 
+    /// <summary>An NV12 texture's luma plane, through a staging copy.</summary>
+    public byte[] ReadLuma(nint texture, int width, int height)
+    {
+        var description = new Texture2DDescription { Width = (uint)width, Height = (uint)height, MipLevels = 1, ArraySize = 1, Format = MediaFoundationValues.Nv12Format, SampleCount = 1, Usage = MediaFoundationValues.StagingUsage, CpuAccessFlags = MediaFoundationValues.CpuRead };
+        Assert.True(_deviceApi.CreateTexture2D(in description, 0, out var staging) >= 0);
+        _contextApi.CopyResource(staging, texture);
+        Assert.True(_contextApi.Map(staging, 0, MediaFoundationValues.MapRead, 0, out var mapped) >= 0);
+        var luma = new byte[width * height];
+
+        for (var row = 0; row < height; row++)
+        {
+            new ReadOnlySpan<byte>((byte*)mapped.Data + (row * mapped.RowPitch), width).CopyTo(luma.AsSpan(row * width));
+        }
+
+        _contextApi.Unmap(staging, 0);
+        ComObjects.Release(ref staging);
+
+        return luma;
+    }
+
     public void Dispose()
     {
         for (var index = 0; index < _textures.Count; index++)

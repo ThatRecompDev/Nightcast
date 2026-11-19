@@ -5,6 +5,8 @@ using Microsoft.Extensions.Logging;
 using Phantom.Engine.Core;
 using Phantom.Engine.Media.Video;
 using Phantom.Relay.Media.Windows;
+using Phantom.Relay.Profiles;
+using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.Desktop.Pictures;
@@ -15,25 +17,31 @@ namespace Phantom.Relay.Desktop.Pictures;
 /// next access unit, the decode thread moves the decoder onto that adapter when it is another (only before the first
 /// picture: a new decoder needs a key frame) and from then on copies each picture on the GPU into a ring of shared NV12
 /// textures (<see cref="SharedSurfaceRing"/>) and publishes it (<see cref="GpuPictureSlots"/>) for the renderer, which
-/// opens the ring once. When anything of it fails, the pictures go on being read back, and <see cref="Report"/> says
-/// why. The ring is made again when the stream's size changes; an old ring is kept until the decoder is disposed, since
-/// the renderer may still be opening its handles.
+/// opens the ring once. With frame generation on (<see cref="Use"/>), each new picture is published with the frames
+/// generated before it (<see cref="GeneratedPictures"/>) and a repeat is not published at all; the frame pacer then
+/// says which of them each refresh shows. When anything of it fails, the pictures go on being read back (or play without
+/// frame generation), and <see cref="Report"/> says why. The ring is made again when the stream's size changes; an old
+/// ring is kept until the decoder is disposed, since the renderer may still be opening its handles.
 /// </summary>
 internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer, IGpuPictureSource
 {
-    /// <summary>A triple buffer: one slot written, one waiting, one on screen.</summary>
-    private const int RingSlots = 3;
+    /// <summary>The most pictures one new picture gives: x4 frame generation.</summary>
+    private const int MaxGroup = FrameGeneration.MaximumMultiplier;
 
-    private const int OneGroup = 1;
+    /// <summary>The group being written, the group waiting and the picture on screen (a triple buffer without generation).</summary>
+    private const int RingSlots = (2 * MaxGroup) + 1;
 
     private readonly TimeProvider _clock;
     private readonly ILogger _log;
-    private readonly GpuPictureSlots _slots = new(RingSlots, OneGroup, new NewestPicturePacer());
+    private readonly GpuPictureSlots _slots = new(RingSlots, MaxGroup, new NewestPicturePacer());
     private readonly List<SharedSurfaceRing> _retired = [];
+    private readonly GeneratedPictures _frames;
     private MediaFoundationH264Decoder _decoder;
     private SharedSurfaceRing? _ring;
     private GpuPictureRing? _published;
-    private GpuPictureReport _report = GpuPictureReport.Idle;
+    private string _path = GpuPictureReport.ReadBack;
+    private FrameGeneration _wanted = FrameGeneration.Off;
+    private FrameGeneration? _applied;
     private long _offered;
     private bool _offerTaken;
     private string? _withdrawn;
@@ -47,6 +55,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         _decoder = decoder;
         _clock = clock;
         _log = log;
+        _frames = new GeneratedPictures(clock, log);
     }
 
     public string CodecId => _decoder.CodecId;
@@ -59,11 +68,30 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
 
     public GpuPictureRing? Ring => Volatile.Read(ref _published);
 
-    public GpuPictureReport Report => Volatile.Read(ref _report);
+    /// <summary>The path, and what frame generation does (or why it is off: it needs the GPU path).</summary>
+    public GpuPictureReport Report
+    {
+        get
+        {
+            var generation = _frames.Describe();
+
+            if (!_sharing && Volatile.Read(ref _wanted).IsOn)
+            {
+                generation = $"{GpuPictureReport.GenerationOff}: the pictures are read back (it runs on the GPU path only)";
+            }
+
+            return new GpuPictureReport(Volatile.Read(ref _path), generation);
+        }
+    }
 
     public void Offer(long adapterLuid)
     {
         Interlocked.CompareExchange(ref _offered, adapterLuid, 0);
+    }
+
+    public void Use(FrameGeneration settings)
+    {
+        Volatile.Write(ref _wanted, settings);
     }
 
     public void Withdraw(string reason)
@@ -116,7 +144,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     }
 
     [HotPath]
-    public bool Publish(long decodedAt, out int width, out int height)
+    public bool Publish(PictureKind kind, long decodedAt, out int width, out int height)
     {
         width = _decoder.PictureWidth;
         height = _decoder.PictureHeight;
@@ -126,25 +154,20 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
             return false;
         }
 
-        if (!_slots.TryClaim(out var slot, out var release))
+        ApplyGeneration(width, height);
+
+        if (!_frames.IsOn)
+        {
+            return PublishDecoded(surface, slice, decodedAt, width, height);
+        }
+
+        // A repeat adds nothing the generated frames do not already show.
+        if (kind == PictureKind.Repeat)
         {
             return false;
         }
 
-        if (!_ring!.WaitForReader(release.Fence, release.Value))
-        {
-            _slots.Abandon(slot);
-            StopSharing("the decoder's device could not open the renderer's fence");
-
-            return false;
-        }
-
-        _ring.Copy(slot, surface, slice);
-        var ready = _ring.Signal();
-        _slots.Add(new GpuPicture(_generation, slot, ready, width, height, _decoder.PictureColour, decodedAt, false));
-        _slots.Publish();
-
-        return true;
+        return PublishGenerated(surface, slice, decodedAt, width, height);
     }
 
     public bool TryTake(out GpuPicture picture)
@@ -164,6 +187,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
 
     public void Dispose()
     {
+        _frames.Dispose();
         _decoder.Dispose();
         _ring?.Dispose();
 
@@ -173,6 +197,86 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         }
 
         _retired.Clear();
+    }
+
+    // The decoded picture alone: copied into a slot, the fence set, published.
+    [HotPath]
+    private bool PublishDecoded(nint surface, uint slice, long decodedAt, int width, int height)
+    {
+        if (!TryClaim(out var slot))
+        {
+            return false;
+        }
+
+        _ring!.Copy(slot, surface, slice);
+        Add(slot, decodedAt, width, height, generated: false);
+        _slots.Publish();
+
+        return true;
+    }
+
+    // The frames generated between the last new picture and this one, each in a slot, then this one; published as one group.
+    [HotPath]
+    private bool PublishGenerated(nint surface, uint slice, long decodedAt, int width, int height)
+    {
+        var count = _frames.Generate(surface, slice);
+
+        for (var index = 0; index < count; index++)
+        {
+            if (!TryClaim(out var slot))
+            {
+                break;
+            }
+
+            _ = _frames.Write(index, _ring!.Texture(slot));
+            Add(slot, decodedAt, width, height, generated: true);
+        }
+
+        _frames.Done();
+
+        return PublishDecoded(surface, slice, decodedAt, width, height);
+    }
+
+    // A free slot, once the decoder's queue waits on the GPU for the renderer's last read of it.
+    [HotPath]
+    private bool TryClaim(out int slot)
+    {
+        if (!_slots.TryClaim(out slot, out var release))
+        {
+            return false;
+        }
+
+        if (_ring!.WaitForReader(release.Fence, release.Value))
+        {
+            return true;
+        }
+
+        _slots.Abandon(slot);
+        StopSharing("the decoder's device could not open the renderer's fence");
+
+        return false;
+    }
+
+    // The slot is written: the fence is set once the GPU is done, and the picture joins the group.
+    [HotPath]
+    private void Add(int slot, long decodedAt, int width, int height, bool generated)
+    {
+        var ready = _ring!.Signal();
+        _slots.Add(new GpuPicture(_generation, slot, ready, width, height, _decoder.PictureColour, decodedAt, generated));
+    }
+
+    // The profile's frame generation, set up again when it or the picture's size changed.
+    private void ApplyGeneration(int width, int height)
+    {
+        var wanted = Volatile.Read(ref _wanted);
+
+        if (ReferenceEquals(wanted, _applied) && width == _frames.Width && height == _frames.Height)
+        {
+            return;
+        }
+
+        _applied = wanted;
+        _slots.UsePacer(_frames.Apply(wanted, _decoder.Device, _ring!.IsWritableByVideoProcessor, width, height));
     }
 
     // The renderer's adapter: the decoder moves there unless it is there already, then shares.
@@ -191,7 +295,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         }
 
         _sharing = true;
-        Volatile.Write(ref _report, _report with { Path = GpuPictureReport.ZeroCopy });
+        Volatile.Write(ref _path, GpuPictureReport.ZeroCopy);
     }
 
     private bool TryMove(long adapterLuid)
@@ -252,6 +356,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     {
         _generation++;
         _slots.Reset(_generation);
+        _applied = null;
 
         var handles = ImmutableArray.CreateBuilder<nint>(ring.Count);
 
@@ -267,7 +372,8 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     private void StopSharing(string reason)
     {
         _sharing = false;
-        Volatile.Write(ref _report, _report with { Path = $"{GpuPictureReport.ReadBack}: {reason}" });
+        _frames.Dispose();
+        Volatile.Write(ref _path, $"{GpuPictureReport.ReadBack}: {reason}");
         _log.ReadBack(reason);
     }
 }

@@ -13,6 +13,12 @@ internal static partial class PictureLog
     [LoggerMessage(Level = LogLevel.Information, Message = "Pictures are read back to the CPU: {Reason}")]
     public static partial void ReadBack(this ILogger log, string reason);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Frame generation: LSFG x{Multiplier} ({Mode}), flow scale {FlowScale}")]
+    public static partial void GenerationOn(this ILogger log, int multiplier, string mode, float flowScale);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Frame generation off, the stream plays without it: {Reason}")]
+    public static partial void GenerationOff(this ILogger log, string reason);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "The decoder moved to the renderer's GPU (adapter 0x{Luid:X})")]
     public static partial void MovedToAdapter(this ILogger log, long luid);
 }

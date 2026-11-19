@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Media.Video;
+using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.Stream.Tests.Fakes;
@@ -21,6 +22,8 @@ public sealed class FakeGpuDecoder : IVideoDecoder, IGpuPictureProducer
 
     public List<long> PublishedAt { get; } = [];
 
+    public List<PictureKind> Kinds { get; } = [];
+
     public VideoDecodeResult Decode(ReadOnlySpan<byte> frame, ReadOnlySpan<byte> alpha)
     {
         Calls.Add("decode");
@@ -40,10 +43,11 @@ public sealed class FakeGpuDecoder : IVideoDecoder, IGpuPictureProducer
         Calls.Add("prepare");
     }
 
-    public bool Publish(long decodedAt, out int width, out int height)
+    public bool Publish(PictureKind kind, long decodedAt, out int width, out int height)
     {
         Calls.Add("publish");
         PublishedAt.Add(decodedAt);
+        Kinds.Add(kind);
         width = 2560;
         height = 1440;
 

@@ -155,12 +155,12 @@ public sealed class DecodeWorker : IDisposable
         foreach (var (unit, timestamp, key) in _queue.GetConsumingEnumerable())
         {
             long start = _clock.GetTimestamp();
-            _ = Classify(unit.Length, key);
+            var kind = Classify(unit.Length, key);
             _gpu?.Prepare();
             _decoder.Decode(unit, ReadOnlySpan<byte>.Empty, timestamp);
 
             long decoded = _clock.GetTimestamp();
-            HandOff(decoded);
+            HandOff(kind, decoded);
 
             long end = _clock.GetTimestamp();
             Interlocked.Add(ref _handOffTicks, end - decoded);
@@ -170,11 +170,11 @@ public sealed class DecodeWorker : IDisposable
 
     // The decoded picture to the renderer: on the GPU while the decoder shares, else read back into the mailbox, where
     // the renderer shows the newest.
-    private void HandOff(long decoded)
+    private void HandOff(PictureKind kind, long decoded)
     {
         if (_gpu is not null && _gpu.IsSharing)
         {
-            if (_gpu.Publish(decoded, out var width, out var height))
+            if (_gpu.Publish(kind, decoded, out var width, out var height))
             {
                 Volatile.Write(ref _width, width);
                 Volatile.Write(ref _height, height);

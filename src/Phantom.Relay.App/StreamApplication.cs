@@ -215,7 +215,7 @@ public sealed class StreamApplication : IApplication
         }
     }
 
-    /// <summary>A new title's profile plays from this frame on; a keyboard and mouse profile takes the mouse.</summary>
+    /// <summary>A new title's profile plays from this frame on (its pad, its frame generation); a keyboard and mouse profile takes the mouse.</summary>
     private void FollowProfile()
     {
         var profile = _stream.Profile;
@@ -227,6 +227,7 @@ public sealed class StreamApplication : IApplication
 
         _profile = profile;
         _pads.Use(profile);
+        _stream.GpuPictures?.Use(profile.FrameGeneration);
         _reports.Reset();
         _captureMouse = KeyboardMousePlays();
     }

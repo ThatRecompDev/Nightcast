@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.Profiles;
+
 namespace Phantom.Relay.Stream.Media.Gpu;
 
 /// <summary>
@@ -24,6 +26,12 @@ public interface IGpuPictureSource
     /// adapter (before its first picture) and shares its pictures from then on, or says in <see cref="Report"/> why not.
     /// </summary>
     void Offer(long adapterLuid);
+
+    /// <summary>
+    /// Frame generation as the running game's profile sets it, from the next new picture on. It runs on the GPU path
+    /// only, where the platform has it; <see cref="Report"/> says what it does or why it is off.
+    /// </summary>
+    void Use(FrameGeneration settings);
 
     /// <summary>The renderer cannot take the pictures on the GPU after all (it refused the ring): the decoder reads them back from its next picture on.</summary>
     void Withdraw(string reason);

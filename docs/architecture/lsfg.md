@@ -1,8 +1,8 @@
 # LSFG: Lossless Scaling's frame generation in Relay
 
 `Phantom.Relay.Lsfg` runs Lossless Scaling's frame generation (LSFG) on the hardware decoder's D3D11 device, to show
-a 30 fps game at 60 (or 90, 120). It is optional, Windows-only and off by default. It is not wired into the app yet:
-the integrator does that once the engine's GPU texture sharing lands (see "Integration" below).
+a 30 fps game at 60 (or 90, 120). It is optional, Windows-only and off by default; a profile turns it on, and it runs
+on the decoder's GPU picture path (see "Integration" below).
 
 ## Conditions (binding)
 
@@ -122,12 +122,39 @@ with the decoder, one per mechanic, in `Phantom.Relay.Media.Windows/Interop` (`I
 The shader reflection (`ID3D11ShaderReflection`, and its constant-buffer and variable objects, which are not COM
 objects and are called through function pointers) and the resource loading are Lsfg's own.
 
-## Integration (not done here)
+## Integration
 
-- The Heads layer must be allowed to reference the Lsfg layer, and the desktop head must expose the decoder's device
-  and pictures as textures (the engine's GPU texture sharing).
-- The console sends 60 frames a second and repeats each picture of a 30 fps game: only new pictures go to `Submit`
-  and `OnRealFrame`, or the flow between identical pictures is zero.
-- Frames in are R8G8B8A8 or B8G8R8A8 of the size given at creation, with shader-resource binding; generated frames
-  are the generator's own R8G8B8A8 textures, valid until the next `Generate`.
-- The device's immediate context is used from the caller's thread; the decoder's device is made multithread-protected.
+The desktop head runs it (the Heads layer may reference Lsfg; `Pictures/SharedPictureDecoder`,
+`Pictures/GeneratedPictures`, `Pictures/LsfgPicturePacer`), on the decoder's GPU picture path
+([overview](overview.md#the-gpu-picture-path)):
+
+- **Settings.** The running game's profile (`StreamProfile.FrameGeneration`: off, or the quality or performance
+  shaders, x2 to x4, a flow scale of 0.25 to 1.0; off by default, the GTA VI preset at x2 quality) reaches the decode
+  thread through `IGpuPictureSource.Use`, and the stage is made again when it or the picture's size changes.
+- **Only new pictures.** The console sends 60 units a second and repeats each picture of a 30 fps game;
+  `RepeatClassifier` tells them apart (overview, "Frame generation"). A new picture is converted to RGBA
+  (`Nv12ToRgbaConverter`, straight from the decoder's surface) and submitted, and the frames between it and the one
+  before are generated; a repeat is decoded (it is a reference) but not published.
+- **One way to the screen.** Each generated frame is turned back into NV12 by the video processor
+  (`RgbaToNv12Converter`: full-range RGB in, BT.709 limited out) into a slot of the decoder's shared ring, beside the
+  decoded picture, so generated and decoded pictures are drawn alike by the engine's NV12 picture renderer. (The engine
+  draws an imported RGBA texture only through its canvas, which blends by alpha and the generator's alpha is not known
+  to be opaque; NV12 also keeps the decoded picture bit-exact.) The ring then holds 2 x 4 + 1 slots: a group being
+  written, a group waiting and the picture on screen.
+- **Pacing.** A new picture and the frames before it are published as one group; `FramePacer` (behind the slots'
+  `IPicturePacer` port) says at each refresh which of them shows: the generated ones from the new picture's arrival on,
+  the new picture itself (M - 1) / M of a source interval later.
+- **When it cannot run** (Lossless Scaling not installed, shaders that do not fit, a ring the video processor cannot
+  write, the pictures read back), it logs why once and the stream plays without it. The F3 stats show
+  `LSFG x2 (quality) 0.8 ms` (the GPU time of a new picture's whole work) or `LSFG off: <reason>`.
+
+Measured on the owner's RTX 4090 (2026-11-19, `LsfgFrameStageLiveTests` and a window drawing a synthetic 1440p
+30 fps stream through the engine's device): x2 quality at full flow costs 0.83 ms of GPU a new picture (both colour
+conversions, the 34 passes of the real frame, the 66 of the generated one) and 0.8 ms of the decode thread's CPU to
+queue it. Decode to present averaged 10.4 ms (median 7.0, worst 15.3) against 5.2 ms without it: generated frames show
+as soon as they are made, the new picture half a source interval later, as designed. Making the stage (reading the DLL,
+reflecting its shaders, building the pipeline) takes about a quarter of a second, once, on the decode thread, when a
+profile turns it on: a single hitch as the game starts.
+
+Not settled until a live run with a 30 fps game: the pacer's refresh is assumed at 60 Hz (the decode thread does not
+know the display's), and the repeat threshold is the owner's observation.

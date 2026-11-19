@@ -18,9 +18,6 @@ public sealed unsafe class Nv12ToRgbaConverter : IDisposable
     // The decoder's pool of surfaces is far smaller; views beyond this are made and dropped per call.
     private const int MaxCachedViews = 32;
 
-    // The frame rate the content description states; the processor converts one frame per call either way.
-    private const uint NominalRate = 60;
-
     private readonly ComWrappers _wrappers;
     private readonly ID3D11VideoDevice _videoApi;
     private readonly ID3D11VideoContext _contextApi;
@@ -59,7 +56,7 @@ public sealed unsafe class Nv12ToRgbaConverter : IDisposable
     {
         var wrappers = new StrategyBasedComWrappers();
 
-        if (!TryOpenVideo(wrappers, device, out var video, out var context, out problem))
+        if (!VideoProcessorSides.TryOpen(wrappers, device, out var video, out var context, out problem))
         {
             return null;
         }
@@ -121,55 +118,10 @@ public sealed unsafe class Nv12ToRgbaConverter : IDisposable
         ComObjects.Release(ref _video);
     }
 
-    private static bool TryOpenVideo(ComWrappers wrappers, nint device, out nint video, out nint context, out string? problem)
-    {
-        context = 0;
-        var result = Marshal.QueryInterface(device, in Direct3D11Values.VideoDeviceInterface, out video);
-
-        if (ComObjects.Failed(result))
-        {
-            problem = $"the D3D11 device has no video side (0x{result:X8}); create it with D3D11_CREATE_DEVICE_VIDEO_SUPPORT";
-
-            return false;
-        }
-
-        var deviceApi = ComObjects.Wrap<ID3D11Device>(wrappers, device);
-        deviceApi.GetImmediateContext(out var immediate);
-        ComObjects.Free(deviceApi);
-        result = Marshal.QueryInterface(immediate, in Direct3D11Values.VideoContextInterface, out context);
-        ComObjects.Release(ref immediate);
-
-        if (ComObjects.Failed(result))
-        {
-            ComObjects.Release(ref video);
-            problem = $"the D3D11 context has no video side (0x{result:X8})";
-
-            return false;
-        }
-
-        problem = null;
-
-        return true;
-    }
-
     // The processor for this size, its RGBA output texture and view, and the colour spaces of both sides.
     private string? Prepare(nint device)
     {
-        var content = new VideoProcessorContentDescription
-        {
-            InputFrameFormat = Direct3D11Values.ProgressiveFrames,
-            InputRateNumerator = NominalRate,
-            InputRateDenominator = 1,
-            InputWidth = (uint)Width,
-            InputHeight = (uint)Height,
-            OutputRateNumerator = NominalRate,
-            OutputRateDenominator = 1,
-            OutputWidth = (uint)Width,
-            OutputHeight = (uint)Height,
-            Usage = Direct3D11Values.OptimalSpeedUsage,
-        };
-
-        if (ComObjects.Failed(_videoApi.CreateVideoProcessorEnumerator(in content, out _enumerator)) || ComObjects.Failed(_videoApi.CreateVideoProcessor(_enumerator, 0, out _processor)))
+        if (!VideoProcessorSides.TryCreateProcessor(_videoApi, Width, Height, out _enumerator, out _processor))
         {
             return "D3D11 has no video processor for NV12 at this size";
         }

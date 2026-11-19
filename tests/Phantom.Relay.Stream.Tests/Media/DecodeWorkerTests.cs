@@ -20,6 +20,7 @@ public sealed class DecodeWorkerTests
 
         Assert.Equal(["prepare", "decode", "publish", "prepare", "decode", "publish"], decoder.Calls);
         Assert.Equal(2, decoder.PublishedAt.Count);
+        Assert.Equal([PictureKind.New, PictureKind.New], decoder.Kinds);
         Assert.False(mailbox.TryTake());
     }
 
