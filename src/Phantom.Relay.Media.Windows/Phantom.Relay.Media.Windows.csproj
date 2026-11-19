@@ -1,14 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Windows hardware H.264 decoder behind Phantom.Engine's IVideoDecoder port. Its bitstream and picture
-       helpers (Annex-B units, the SPS's colour, NV12 to planes) are game-agnostic and engine candidates. -->
+  <!-- The Windows hardware H.264 decoder behind Phantom.Engine's IVideoDecoder: Media Foundation's decoder on DXVA,
+       reached through source-generated COM (GeneratedComInterface, LibraryImport), so it is NativeAOT-safe. Its
+       bitstream and picture helpers (Annex-B units, the SPS's colour, NV12 to planes) are game-agnostic and engine
+       candidates. -->
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Phantom.Engine.Core" />
     <PackageReference Include="Phantom.Engine.Media" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Media.Windows.Tests" />
   </ItemGroup>
 
 </Project>
