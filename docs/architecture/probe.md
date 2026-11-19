@@ -5,7 +5,7 @@ WebRTC exists. It signs in, lists the consoles, starts a session, waits until th
 probe offer, shows what the console answers, and always stops the session it started.
 
 ```
-dotnet run --project src/Phantom.Relay.Tools.Probe -- [P720|P1080|P1080High|P1440] [--sign-out]
+dotnet run --project src/Phantom.Relay.Tools.Probe -- [P720|P1080|P1080High|P1440] [--view] [--sign-out]
 ```
 
 The tier defaults to the default profile's (1440p). `--sign-out` forgets the kept account first.
@@ -17,13 +17,15 @@ The tier defaults to the default profile's (1440p). `--sign-out` forgets the kep
 - It prints the console names, the session states and the answer's media lines (codecs, formats, bandwidth, picture
   attributes). It never prints a token, a credential, a fingerprint or an ICE candidate.
 
-## The probe offer
+## The offer and the stream
 
-A well-formed offer with nothing behind it: random ICE credentials, a random DTLS fingerprint, Opus sendrecv, video
-recvonly and the data channels' SCTP line, bundled. Video offers every codec the engine decodes, best first: H.264
-High, Main and Constrained Baseline at level 5.1 (enough for 1440p60), then AV1. The answer shows which one the
-console picks and with what parameters. No connection is made, so the console gives up on it and the probe stops
-the session.
+The probe sends Stream's real offer (`StreamOffer`): the session's ICE credentials and DTLS certificate fingerprint,
+Opus sendrecv, video recvonly with H.264 High, Main and Constrained Baseline at level 5.1 (enough for 1440p60) and AV1,
+and the data channels' SCTP line, bundled. It then pumps Stream's `ConsoleLink` (ICE, DTLS, the channels and the media
+path) phase by phase with a deadline each and reports what each phase measured; the decoding is Stream's
+`DecodeWorker` with the engine's `H264Decoder`. A measuring run keeps the stream six seconds; `--view` shows it in a
+window until the window closes. The app streams through the same pieces (`StreamConnection`), so what the probe
+measures is what the app runs.
 
 ## Reading the result
 
