@@ -113,7 +113,9 @@ that repeats the picture costs RCAS alone. Frame generation stays at the stream'
 than the picture is drawn bilinearly as before.
 
 The profile's `Upscaling.Method` chooses it (`Fsr`, the default; `Bilinear` is off; `Xbr`; the older name `Sharp`
-reads as `Fsr`); F6 steps through FSR 1, off and xBR live. The F3 stats show `FSR 1 → 3840x2160 0.16 ms` (the GPU
+reads as `Fsr`; `Ls1`, `Ls1Performance` and `Sgsr` are Lossless Scaling's own, run where the pictures are decoded,
+below); F6 steps through FSR 1, LS1, LS1 performance, SGSR, xBR and off live, F7 through RCAS's sharpness (0.2, 0.1,
+0, 0.5 stops) or, with LS1, its network. The F3 stats show `FSR 1 → 3840x2160 0.16 ms` (the GPU
 time of the passes before the window's: the picture's and EASU's, timed by the device while the stats show) or
 `upscale off`, the title the filter's name.
 
@@ -121,6 +123,11 @@ Measured on the owner's RTX 4090 (2026-11-19, `StreamUpscalerLiveTests`, the eng
 2160, each pass timed by the device): the picture's pass 0.01 ms, EASU 0.15 ms, RCAS 0.04 ms, against 0.02 to 0.03 ms
 for the bilinear draw before; nothing allocated on the managed heap per frame. `PictureUpscaler` itself makes new
 targets on every call (it upscales a UI picture once), so a per-frame mode with kept targets is an engine candidate.
+
+**Lossless Scaling's upscalers** ([lossless-upscalers](lossless-upscalers.md)) run on the decoder's side of the GPU
+picture path: the renderer asks the decoder for its pictures at the letterbox's size (`IGpuPictureSource.Scale`), the
+decoder makes its shared ring at that size and upscales each picture it publishes (after LSFG, which stays at 1440p),
+and the renderer draws it one to one. Without the GPU path or Lossless.dll, FSR 1 upscales here instead.
 
 **Fullscreen** (F11, Alt+Enter) is not there: the engine's `IWindow` has no fullscreen call and phantom_gfx exposes
 no `sapp_toggle_fullscreen`. It is an engine lane (a window call any app could use), not Relay's.

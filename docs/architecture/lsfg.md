@@ -1,7 +1,8 @@
 # LSFG: Lossless Scaling's frame generation in Relay
 
 `Phantom.Relay.Lsfg` runs Lossless Scaling's frame generation (LSFG) on the hardware decoder's D3D11 device, to show
-a 30 fps game at 60 (or 90, 120). It is optional, Windows-only and off by default; a profile turns it on, and it runs
+a 30 fps game at 60 (or 90, 120); its upscalers (LS1, SGSR) run from the same DLL on the same device
+([lossless-upscalers](lossless-upscalers.md)). It is optional, Windows-only and off by default; a profile turns it on, and it runs
 on the decoder's GPU picture path (see "Integration" below).
 
 ## Conditions (binding)
