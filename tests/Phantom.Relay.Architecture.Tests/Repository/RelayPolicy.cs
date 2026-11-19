@@ -16,6 +16,7 @@ public static class RelayPolicy
     public const string Xbox = "Xbox";
     public const string Profiles = "Profiles";
     public const string Adapters = "Adapters";
+    public const string Lsfg = "Lsfg";
     public const string Audio = "Audio";
     public const string Stream = "Stream";
     public const string App = "App";
@@ -29,12 +30,14 @@ public static class RelayPolicy
         Header: Header,
         Layers:
         [
-            new Layer(Tests, ["*.Tests"], [WebRtc, Xbox, Profiles, Adapters, Audio, Stream, App, Heads, Tools]),
+            new Layer(Tests, ["*.Tests"], [WebRtc, Xbox, Profiles, Adapters, Lsfg, Audio, Stream, App, Heads, Tools]),
             new Layer(WebRtc, ["Phantom.Relay.WebRtc"], []),
             new Layer(Xbox, ["Phantom.Relay.Xbox"], []),
             new Layer(Audio, ["Phantom.Relay.Audio"], []),
             new Layer(Profiles, ["Phantom.Relay.Profiles"], [Xbox]),
             new Layer(Adapters, ["Phantom.Relay.Http.*", "Phantom.Relay.Pads.*", "Phantom.Relay.Media.*"], [Xbox]),
+            // Optional frame generation on the decoder's D3D11 device, sharing Media.Windows' COM definitions.
+            new Layer(Lsfg, ["Phantom.Relay.Lsfg"], [Adapters]),
             new Layer(Stream, ["Phantom.Relay.Stream"], [Audio, WebRtc, Profiles, Xbox]),
             new Layer(App, ["Phantom.Relay.App"], [Stream, Audio, WebRtc, Profiles, Xbox]),
             new Layer(Heads, ["Phantom.Relay.Desktop", "Phantom.Relay.Browser", "Phantom.Relay.Specter"], [App, Stream, Adapters, Audio, WebRtc, Profiles, Xbox]),
