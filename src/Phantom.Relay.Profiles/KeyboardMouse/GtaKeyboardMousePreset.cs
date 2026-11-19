@@ -91,11 +91,15 @@ public static class GtaKeyboardMousePreset
     /// </summary>
     public const string GtaSixTitleId = "7952987a";
 
-    /// <summary>The profile, with the default stream settings, chosen whenever the console runs GTA VI.</summary>
+    /// <summary>
+    /// The profile, with the default stream settings and frame generation at x2 (GTA VI runs at 30 fps on the console,
+    /// shown at 60), chosen whenever the console runs GTA VI.
+    /// </summary>
     public static StreamProfile Profile { get; } = StreamProfile.Default with
     {
         Name = ProfileName,
         TitleIds = [GtaSixTitleId],
+        FrameGeneration = FrameGeneration.QualityDoubled,
         KeyboardMouse = Settings,
     };
 }

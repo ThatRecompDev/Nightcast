@@ -64,5 +64,6 @@ public sealed class GtaKeyboardMousePresetTests
         Assert.Equal(preset.KeyboardMouse.MouseButtons, loaded.KeyboardMouse.MouseButtons);
 
         Assert.Empty(loaded.KeyboardMouse.Wheel.Bindings);
+        Assert.Equal(FrameGeneration.QualityDoubled, loaded.FrameGeneration);
     }
 }

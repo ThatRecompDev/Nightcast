@@ -2,14 +2,14 @@
 
 namespace Phantom.Relay.Profiles;
 
-/// <summary>How frames are made between the stream's own (docs/architecture/overview.md#frame-generation).</summary>
+/// <summary>How frames are made between the stream's own: off, or Lossless Scaling's shader sets (docs/architecture/lsfg.md).</summary>
 public enum FrameGenerationMode
 {
     Off,
 
-    /// <summary>Optical flow at a quarter of the stream's resolution.</summary>
+    /// <summary>The lighter shader set: about half the features per pass, a little faster and a little softer.</summary>
     Performance,
 
-    /// <summary>Optical flow at half resolution, checked both ways for occlusion.</summary>
+    /// <summary>The full shader set.</summary>
     Quality,
 }

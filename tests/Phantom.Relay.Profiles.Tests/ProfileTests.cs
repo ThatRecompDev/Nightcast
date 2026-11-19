@@ -14,7 +14,7 @@ public sealed class ProfileTests
         Name = "GTA VI",
         TitleIds = ["1A2B3C4D"],
         Stream = new StreamTier(StreamResolution.P1080High),
-        FrameGeneration = new FrameGeneration(FrameGenerationMode.Quality, FrameGeneration.Doubled, 60),
+        FrameGeneration = new FrameGeneration(FrameGenerationMode.Quality, FrameGeneration.Doubled, 60, 0.5f),
         Pad = PadSettings.Standard with
         {
             Curve = ResponseCurve.Smooth,
@@ -33,7 +33,7 @@ public sealed class ProfileTests
         Assert.Equal("GTA VI", loaded.Name);
         Assert.Equal(["1A2B3C4D"], loaded.TitleIds);
         Assert.Equal(StreamResolution.P1080High, loaded.Stream.Resolution);
-        Assert.Equal(new FrameGeneration(FrameGenerationMode.Quality, 2, 60), loaded.FrameGeneration);
+        Assert.Equal(new FrameGeneration(FrameGenerationMode.Quality, 2, 60, 0.5f), loaded.FrameGeneration);
         Assert.Equal(ResponseCurve.Smooth, loaded.Pad.Curve);
         Assert.Equal(XboxButtons.B, loaded.Pad.Remap[XboxButtons.A]);
     }
@@ -81,6 +81,38 @@ public sealed class ProfileTests
         Assert.Equal(StreamResolution.P1440, settings.Resolution);
         Assert.Equal("tizen", settings.OsName);
         Assert.Equal(FrameGenerationMode.Off, StreamProfile.Default.FrameGeneration.Mode);
+    }
+
+    [Fact]
+    public void A_profile_kept_before_the_flow_scale_existed_loads_with_the_whole_picture()
+    {
+        var memory = new MemoryPersistentStore();
+        new ProfileStore(memory).Save(Gta);
+        string json = Encoding.UTF8.GetString(memory.Read("profile.GTA_VI")!).Replace("\"flowScale\": 0.5,", string.Empty, StringComparison.Ordinal);
+        memory.Write("profile.GTA_VI", Encoding.UTF8.GetBytes(json));
+
+        var loaded = Assert.Single(new ProfileStore(memory).LoadAll());
+
+        Assert.DoesNotContain("flowScale", json, StringComparison.Ordinal);
+        Assert.Equal(FrameGeneration.FullFlow, loaded.FrameGeneration.FlowScale);
+    }
+
+    [Theory]
+    [InlineData(FrameGenerationMode.Off, 2, false)]
+    [InlineData(FrameGenerationMode.Quality, 1, false)]
+    [InlineData(FrameGenerationMode.Performance, 3, true)]
+    public void Frame_generation_is_on_with_a_mode_and_more_than_one_frame(FrameGenerationMode mode, int multiplier, bool on)
+    {
+        Assert.Equal(on, new FrameGeneration(mode, multiplier, FrameGeneration.DisplayRate).IsOn);
+    }
+
+    [Fact]
+    public void Out_of_range_multipliers_and_flow_scales_are_brought_into_range()
+    {
+        var wild = new FrameGeneration(FrameGenerationMode.Quality, 9, 0, 0.01f);
+
+        Assert.Equal((4, 0.25f), (wild.ClampedMultiplier, wild.ClampedFlowScale));
+        Assert.Equal(1f, (wild with { FlowScale = float.NaN }).ClampedFlowScale);
     }
 
     [Fact]
