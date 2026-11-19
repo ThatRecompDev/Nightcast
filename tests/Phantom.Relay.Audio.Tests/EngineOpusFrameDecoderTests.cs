@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Audio.Codecs.Opus;
+using Phantom.Engine.Testing.Time;
 
 namespace Phantom.Relay.Audio.Tests;
 
@@ -57,5 +58,25 @@ public sealed class EngineOpusFrameDecoderTests
     public void RefusesAMonoDecoder()
     {
         Assert.Throws<ArgumentException>(() => new EngineOpusFrameDecoder(new OpusDecoder(1)));
+    }
+
+    [Fact]
+    public void PlaysTheStreamThroughTheEnginesDecoder()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var decoder = new EngineOpusFrameDecoder(new OpusDecoder(OpusStreamFormat.Channels));
+        var player = new OpusStreamPlayer(decoder, clock, OpusStreamFormat.SampleRate, PlayoutSettings.Default);
+        var output = new float[480 * OpusStreamFormat.Channels];
+
+        for (var index = 0; index < 20; index++)
+        {
+            player.Push(TenMilliseconds, (ushort)index, (uint)(index * 480));
+            player.Render(output, 480);
+            clock.AdvanceMilliseconds(10);
+        }
+
+        Assert.True(player.Stats.PacketsPlayed > 10);
+        Assert.Equal(0, player.Stats.RefusedPackets);
+        Assert.All(output, sample => Assert.Equal(0f, sample, 6));
     }
 }
