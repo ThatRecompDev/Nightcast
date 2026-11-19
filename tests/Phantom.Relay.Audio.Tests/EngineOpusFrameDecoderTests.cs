@@ -41,7 +41,7 @@ public sealed class EngineOpusFrameDecoderTests
     }
 
     [Fact]
-    public void ConcealsButHasNoFec()
+    public void Rebuilds_a_lost_frame_through_the_engines_fec_and_conceals_without_a_next_packet()
     {
         var decoder = new EngineOpusFrameDecoder(new OpusDecoder(OpusStreamFormat.Channels));
         var output = new float[OpusStreamFormat.MaxPacketSamples * OpusStreamFormat.Channels];
@@ -50,7 +50,7 @@ public sealed class EngineOpusFrameDecoderTests
         var fec = decoder.DecodeFec(TenMilliseconds, 480, output);
         var concealed = decoder.DecodeLost(480, output);
 
-        Assert.Equal(0, fec);
+        Assert.Equal(480, fec);
         Assert.Equal(480, concealed);
     }
 
