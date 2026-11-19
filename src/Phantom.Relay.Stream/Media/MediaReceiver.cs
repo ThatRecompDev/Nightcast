@@ -116,13 +116,14 @@ public sealed class MediaReceiver : IAccessUnitSink
     public void Deliver(ReadOnlySpan<byte> accessUnit, uint timestamp, H264AccessUnitContent content)
     {
         Interlocked.Increment(ref _units);
+        bool key = (content & H264AccessUnitContent.Idr) != 0;
 
-        if ((content & H264AccessUnitContent.Idr) != 0)
+        if (key)
         {
             _keyframes++;
         }
 
-        _video.Enqueue(accessUnit, timestamp);
+        _video.Enqueue(accessUnit, timestamp, key);
     }
 
     /// <summary>The network side's counts, read on the network thread.</summary>

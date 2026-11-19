@@ -367,6 +367,9 @@ public sealed class StreamConnection : IDisposable
             media?.AccessUnits ?? 0,
             video.Pictures,
             video.Decoded,
+            video.NewPictures,
+            video.RepeatedPictures,
+            video.Cadence,
             video.DecodeTotal,
             video.HandOffTotal,
             video.TakeWindowWorst(),
@@ -376,7 +379,9 @@ public sealed class StreamConnection : IDisposable
             video.Width,
             video.Height);
 
-        Publish(_meter.Measure(Stats, in counters) with { IceRoundTrip = link.Ice.RoundTrip });
+        var stats = _meter.Measure(Stats, in counters) with { IceRoundTrip = link.Ice.RoundTrip };
+        Publish(stats);
+        _log.PictureCadence(stats.NewPicturesPerSecond, stats.RepeatedPicturesPerSecond, stats.Cadence);
     }
 
     /// <summary>A keep-alive goes out unless the last is still on its way; a refused one is logged, not fatal.</summary>

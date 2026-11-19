@@ -3,6 +3,7 @@
 using System.Globalization;
 using Phantom.Relay.App.Stats;
 using Phantom.Relay.Stream;
+using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.App.Tests.Stats;
@@ -16,6 +17,9 @@ public sealed class StatsTextTests
         Height = 1440,
         FramesReceivedPerSecond = 59.6,
         FramesDecodedPerSecond = 59.4,
+        NewPicturesPerSecond = 29.7,
+        RepeatedPicturesPerSecond = 29.7,
+        Cadence = PictureCadence.Half,
         DecodeAverage = TimeSpan.FromMilliseconds(8.14),
         DecodeWorst = TimeSpan.FromMilliseconds(41.5),
         HandOffAverage = TimeSpan.FromMilliseconds(0.3),
@@ -38,7 +42,7 @@ public sealed class StatsTextTests
         {
             string title = StatsText.WithStats(Streaming, Present, GpuPictureReport.Idle with { Path = GpuPictureReport.ZeroCopy });
 
-            Assert.Equal("Phantom.Relay | 2560x1440 | 60 fps in, 59 decoded | decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms | to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms | GPU zero-copy | LSFG off | RTT 0.4 ms | DTLS 73.0 ms | lost 2, PLI 1, pad reports 40", title);
+            Assert.Equal("Phantom.Relay | 2560x1440 | 60 fps in, 59 decoded (30 new, 30 repeated, every other repeated) | decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms | to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms | GPU zero-copy | LSFG off | RTT 0.4 ms | DTLS 73.0 ms | lost 2, PLI 1, pad reports 40", title);
         }
         finally
         {

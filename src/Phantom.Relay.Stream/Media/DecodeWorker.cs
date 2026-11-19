@@ -17,15 +17,19 @@ namespace Phantom.Relay.Stream.Media;
 /// </summary>
 public sealed class DecodeWorker : IDisposable
 {
-    private readonly BlockingCollection<(byte[] Unit, uint Timestamp)> _queue = [];
+    private readonly BlockingCollection<(byte[] Unit, uint Timestamp, bool Key)> _queue = [];
     private readonly IVideoDecoder _decoder;
     private readonly IGpuPictureProducer? _gpu;
     private readonly PictureMailbox _mailbox;
     private readonly TimeProvider _clock;
+    private readonly RepeatClassifier _repeats = new(RepeatSettings.Standard);
     private readonly Thread _thread;
 
     private long _pictures;
     private long _decoded;
+    private long _news;
+    private long _repeated;
+    private int _cadence;
     private long _decodeTicks;
     private long _handOffTicks;
     private long _worstTicks;
@@ -51,6 +55,15 @@ public sealed class DecodeWorker : IDisposable
     /// <summary>Access units decoded.</summary>
     public long Decoded => Interlocked.Read(ref _decoded);
 
+    /// <summary>Access units that carried a new picture (<see cref="RepeatClassifier"/>).</summary>
+    public long NewPictures => Interlocked.Read(ref _news);
+
+    /// <summary>Access units that repeated the picture before.</summary>
+    public long RepeatedPictures => Interlocked.Read(ref _repeated);
+
+    /// <summary>The rhythm of new pictures the classifier follows.</summary>
+    public PictureCadence Cadence => (PictureCadence)Volatile.Read(ref _cadence);
+
     public int Width => Volatile.Read(ref _width);
 
     public int Height => Volatile.Read(ref _height);
@@ -72,15 +85,15 @@ public sealed class DecodeWorker : IDisposable
         _thread.Start();
     }
 
-    /// <summary>Queues a copy of a whole access unit.</summary>
-    public void Enqueue(ReadOnlySpan<byte> unit, uint timestamp)
+    /// <summary>Queues a copy of a whole access unit; <paramref name="key"/> when it holds a key frame (an IDR).</summary>
+    public void Enqueue(ReadOnlySpan<byte> unit, uint timestamp, bool key)
     {
         if (_queue.IsAddingCompleted || Problem is not null)
         {
             return;
         }
 
-        _queue.Add((unit.ToArray(), timestamp));
+        _queue.Add((unit.ToArray(), timestamp, key));
         Volatile.Write(ref _deepestQueue, Math.Max(_deepestQueue, _queue.Count));
     }
 
@@ -139,9 +152,10 @@ public sealed class DecodeWorker : IDisposable
 
     private void DecodeAll()
     {
-        foreach (var (unit, timestamp) in _queue.GetConsumingEnumerable())
+        foreach (var (unit, timestamp, key) in _queue.GetConsumingEnumerable())
         {
             long start = _clock.GetTimestamp();
+            _ = Classify(unit.Length, key);
             _gpu?.Prepare();
             _decoder.Decode(unit, ReadOnlySpan<byte>.Empty, timestamp);
 
@@ -177,6 +191,24 @@ public sealed class DecodeWorker : IDisposable
             _mailbox.Publish(decoded);
             Interlocked.Increment(ref _pictures);
         }
+    }
+
+    // New or repeat, by the unit's size and the cadence; counted for the stats.
+    private PictureKind Classify(int bytes, bool key)
+    {
+        var kind = _repeats.Classify(bytes, key);
+        Volatile.Write(ref _cadence, (int)_repeats.Cadence);
+
+        if (kind == PictureKind.Repeat)
+        {
+            Interlocked.Increment(ref _repeated);
+        }
+        else
+        {
+            Interlocked.Increment(ref _news);
+        }
+
+        return kind;
     }
 
     private void Count(long spent)

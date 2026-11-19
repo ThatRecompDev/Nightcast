@@ -1,11 +1,14 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.Stream.Media;
+
 namespace Phantom.Relay.Stream;
 
 /// <summary>
 /// One immutable snapshot of a stream, published by its network thread on every state change and once a second, so
 /// the render thread reads it whole without a lock: the state (and why it failed), the running title, the path's
-/// round trip, how long DTLS took, the frames received and decoded per second, the decode time per frame (average and
+/// round trip, how long DTLS took, the frames received and decoded per second (and of them the new pictures and the
+/// repeats), the decode time per frame (average and
 /// worst over the last second), and the packets lost, keyframe requests and input reports sent so far.
 /// </summary>
 public sealed record StreamStats
@@ -29,6 +32,15 @@ public sealed record StreamStats
     public double FramesReceivedPerSecond { get; init; }
 
     public double FramesDecodedPerSecond { get; init; }
+
+    /// <summary>Units a second that carried a new picture (<see cref="RepeatClassifier"/>).</summary>
+    public double NewPicturesPerSecond { get; init; }
+
+    /// <summary>Units a second that repeated the picture before (a 30 fps game sends 30 of the 60).</summary>
+    public double RepeatedPicturesPerSecond { get; init; }
+
+    /// <summary>The rhythm of new pictures the classifier follows.</summary>
+    public PictureCadence Cadence { get; init; }
 
     public TimeSpan DecodeAverage { get; init; }
 

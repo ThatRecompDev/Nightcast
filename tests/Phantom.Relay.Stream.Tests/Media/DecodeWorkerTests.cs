@@ -39,7 +39,7 @@ public sealed class DecodeWorkerTests
         var decoder = new FakeGpuDecoder { IsSharing = true };
         var worker = new DecodeWorker(decoder, new PictureMailbox(), _clock);
         worker.Start();
-        worker.Enqueue([0, 0, 0, 1, 0x65], 0);
+        worker.Enqueue([0, 0, 0, 1, 0x65], 0, key: true);
 
         worker.Dispose();
 
@@ -53,7 +53,7 @@ public sealed class DecodeWorkerTests
 
         for (var unit = 0; unit < units; unit++)
         {
-            worker.Enqueue([0, 0, 0, 1, 0x65], (uint)unit);
+            worker.Enqueue([0, 0, 0, 1, 0x65], (uint)unit, key: unit == 0);
         }
 
         worker.Dispose();

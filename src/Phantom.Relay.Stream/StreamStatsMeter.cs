@@ -33,6 +33,7 @@ public sealed class StreamStatsMeter
             InputReportsSent = counters.InputReportsSent,
             Width = counters.Width,
             Height = counters.Height,
+            Cadence = counters.Cadence,
         };
 
         if (_started && seconds > 0)
@@ -41,6 +42,8 @@ public sealed class StreamStatsMeter
             {
                 FramesReceivedPerSecond = (counters.FramesReceived - _last.FramesReceived) / seconds,
                 FramesDecodedPerSecond = (counters.FramesDecoded - _last.FramesDecoded) / seconds,
+                NewPicturesPerSecond = (counters.NewPictures - _last.NewPictures) / seconds,
+                RepeatedPicturesPerSecond = (counters.RepeatedPictures - _last.RepeatedPictures) / seconds,
                 DecodeAverage = Average(counters.DecodeTotal - _last.DecodeTotal, counters),
                 HandOffAverage = Average(counters.HandOffTotal - _last.HandOffTotal, counters),
             };

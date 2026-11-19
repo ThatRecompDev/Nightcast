@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Microsoft.Extensions.Logging;
+using Phantom.Relay.Stream.Media;
 
 namespace Phantom.Relay.Stream.Logging;
 
@@ -18,6 +19,9 @@ public static partial class StreamLog
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "A session keep-alive was refused: {Reason}")]
     public static partial void KeepAliveRefused(this ILogger log, string reason);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Pictures: {New:F0} new and {Repeated:F0} repeated a second, cadence {Cadence}")]
+    public static partial void PictureCadence(this ILogger log, double @new, double repeated, PictureCadence cadence);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stopping the session failed: {Reason}")]
     public static partial void StopRefused(this ILogger log, string reason);
