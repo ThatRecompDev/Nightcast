@@ -3,7 +3,7 @@
 using Org.BouncyCastle.Tls;
 using Phantom.Relay.WebRtc.Sctp;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Link;
 
 /// <summary>SCTP packets go out as DTLS application data (RFC 8261).</summary>
 public sealed class DtlsSctpOutput : ISctpOutput

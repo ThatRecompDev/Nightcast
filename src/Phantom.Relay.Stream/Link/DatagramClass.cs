@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Link;
 
 /// <summary>Tells DTLS from RTP/RTCP by the first byte of a datagram (RFC 7983 section 7); STUN is told apart before.</summary>
 public static class DatagramClass

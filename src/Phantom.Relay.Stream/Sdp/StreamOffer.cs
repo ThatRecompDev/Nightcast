@@ -4,25 +4,23 @@ using System.Text;
 using Phantom.Engine.Core.Randomness;
 using Phantom.Relay.WebRtc.Ice;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Sdp;
 
 /// <summary>
-/// A well-formed SDP offer with no WebRTC stack behind it: random ICE credentials and a random DTLS fingerprint, the
-/// m-lines a real client offers (Opus sendrecv, video recvonly, the data channels) and every video codec the engine
-/// can decode, best first, so the console's answer shows which codec and profile it picks. Nothing ever connects.
+/// The client's SDP offer: the session's ICE credentials and DTLS certificate fingerprint on every m-line, the m-lines
+/// a real client offers (Opus sendrecv, video recvonly, the data channels), bundled, and every video codec the engine
+/// can decode, best first, so the console's answer picks the best it sends (docs/architecture/xhome.md).
 /// </summary>
-public static class ProbeOffer
+public static class StreamOffer
 {
-    public const string OpusPayload = "111";
-    public const string H264HighPayload = "102";
-    public const string H264MainPayload = "104";
-    public const string H264BaselinePayload = "106";
-    public const string Av1Payload = "45";
+    /// <summary>The payload type the offer gives Opus; the console's sound arrives with it.</summary>
+    public const int OpusPayload = 111;
 
-    private const int UfragBytes = 4;
-    private const int PasswordBytes = 12;
-    private const int FingerprintBytes = 32;
-    private const int HexDigitsPerByte = 2;
+    public const int H264HighPayload = 102;
+    public const int H264MainPayload = 104;
+    public const int H264BaselinePayload = 106;
+    public const int Av1Payload = 45;
+
     private const int SctpPort = 5000;
     private const int MaxMessageSize = 262144;
     private const string Line = "\r\n";
@@ -32,15 +30,9 @@ public static class ProbeOffer
     private const string MainProfileLevel = "4d0033";
     private const string BaselineProfileLevel = "42e033";
 
-    /// <summary>An offer with random ICE credentials and fingerprint: for a probe that only reads the answer.</summary>
-    public static string Create(IRandomSource random)
-    {
-        return Create(new IceCredentials(Hex(random, UfragBytes), Hex(random, PasswordBytes)), Fingerprint(random), random);
-    }
-
     /// <summary>
-    /// An offer carrying <paramref name="ice"/> and the certificate <paramref name="fingerprint"/>, so a live ICE agent
-    /// and DTLS client with them can connect.
+    /// An offer carrying <paramref name="ice"/> and the certificate <paramref name="fingerprint"/>, so the ICE agent
+    /// and DTLS client that hold them can connect. The origin's session id is drawn from <paramref name="random"/>.
     /// </summary>
     public static string Create(IceCredentials ice, string fingerprint, IRandomSource random)
     {
@@ -80,7 +72,7 @@ public static class ProbeOffer
         sdp.Append($"a=rtcp-fb:{Av1Payload} nack{Line}a=rtcp-fb:{Av1Payload} nack pli{Line}");
     }
 
-    private static void AppendH264(StringBuilder sdp, string payload, string profileLevel)
+    private static void AppendH264(StringBuilder sdp, int payload, string profileLevel)
     {
         sdp.Append($"a=rtpmap:{payload} H264/90000{Line}");
         sdp.Append($"a=rtcp-fb:{payload} nack{Line}a=rtcp-fb:{payload} nack pli{Line}");
@@ -92,29 +84,5 @@ public static class ProbeOffer
         sdp.Append($"m=application 9 UDP/DTLS/SCTP webrtc-datachannel{Line}c=IN IP4 0.0.0.0{Line}");
         sdp.Append(transport);
         sdp.Append($"a=mid:2{Line}a=sctp-port:{SctpPort}{Line}a=max-message-size:{MaxMessageSize}{Line}");
-    }
-
-    private static string Hex(IRandomSource random, int bytes)
-    {
-        Span<byte> buffer = stackalloc byte[bytes];
-        Fill(random, buffer);
-
-        return Convert.ToHexStringLower(buffer);
-    }
-
-    private static string Fingerprint(IRandomSource random)
-    {
-        Span<byte> buffer = stackalloc byte[FingerprintBytes];
-        Fill(random, buffer);
-
-        return string.Join(':', Convert.ToHexString(buffer).Chunk(HexDigitsPerByte).Select(static pair => new string(pair)));
-    }
-
-    private static void Fill(IRandomSource random, Span<byte> buffer)
-    {
-        for (int i = 0; i < buffer.Length; i++)
-        {
-            buffer[i] = (byte)random.NextUInt32();
-        }
     }
 }

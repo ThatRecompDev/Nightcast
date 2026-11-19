@@ -1,27 +1,27 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-using Phantom.Engine.Media.Vpx;
+using Phantom.Relay.Stream.Link;
+using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.H264;
 using Phantom.Relay.WebRtc.Rtp;
 using Phantom.Relay.WebRtc.Srtp;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Media;
 
 /// <summary>
-/// The live media path, measured. It decrypts SRTP with the console's key and sends video RTP through the
-/// latency-first reorder stage into the H.264 depacketizer. Each whole access unit is handed to a decode worker on
-/// its own thread, so this loop never waits on the decoder. After a loss, while the depacketizer waits for a
-/// keyframe, it asks the console for one with an SRTCP PLI, at most once per <see cref="KeyframeRequestInterval"/>.
-/// Sound is counted, not decoded yet.
+/// The media path on the network thread. It decrypts SRTP with the console's key and sends video RTP through the
+/// latency-first reorder stage into the H.264 depacketizer. Each whole access unit goes to the
+/// <see cref="DecodeWorker"/>, so this loop never waits on the decoder. After a loss, while the depacketizer waits for
+/// a keyframe, it asks the console for one with an SRTCP PLI, at most once per <see cref="KeyframeRequestInterval"/>.
+/// Each Opus payload goes to the <see cref="IStreamAudioSink"/> as it arrives.
 /// </summary>
-public sealed class MediaReceiver : IAccessUnitSink, IDisposable
+public sealed class MediaReceiver : IAccessUnitSink
 {
     private const int MaxSources = 8;
     private const int ReorderCapacity = 1024;
     private const int MaxPacket = 2048;
     private const int StreamWidth = 2560;
     private const int StreamHeight = 1440;
-    private const int OpusPayload = 111;
 
     /// <summary>Our RTCP sender id: any value; the console only needs it to be stable.</summary>
     private const uint FeedbackSsrc = 0x52454C59;
@@ -37,8 +37,8 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
     private readonly HashSet<int> _videoPayloads;
     private readonly TimeProvider _clock;
     private readonly IRtcpOutput _rtcp;
-    private readonly DecodeWorker? _decoder;
-    private readonly string? _decoderProblem;
+    private readonly DecodeWorker _video;
+    private readonly IStreamAudioSink _audio;
     private readonly byte[] _scratch = new byte[MaxPacket];
     private readonly byte[] _feedback = new byte[MaxPacket];
 
@@ -48,11 +48,11 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
     private long _decrypted;
     private long _refused;
     private long _rtcpPackets;
-    private long _audio;
+    private long _audioPackets;
     private long _units;
     private long _keyframes;
 
-    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, PictureMailbox mailbox, TimeProvider clock)
+    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, DecodeWorker video, IStreamAudioSink audio, TimeProvider clock)
     {
         SrtpKeyingMaterial.Split(profile, keyingMaterial, localIsClient: true, out var own, out var console);
         _decrypt = SrtpContext.Create(profile, console, MaxSources);
@@ -62,10 +62,18 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         _videoPayloads = [.. videoPayloads];
 
         _rtcp = rtcp;
+        _video = video;
+        _audio = audio;
         _clock = clock;
-        _decoder = OpenDecoder(mailbox, clock, out _decoderProblem);
-        _decoder?.Start();
     }
+
+    /// <summary>Whole access units assembled (frames received).</summary>
+    public long AccessUnits => Interlocked.Read(ref _units);
+
+    /// <summary>Packets the reorder stage gave up on.</summary>
+    public long Lost => _reorder.Lost;
+
+    public long KeyframeRequests => Interlocked.Read(ref _requests);
 
     /// <summary>One RTP or RTCP datagram from the console.</summary>
     public void Receive(ReadOnlySpan<byte> datagram)
@@ -107,43 +115,20 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
 
     public void Deliver(ReadOnlySpan<byte> accessUnit, uint timestamp, H264AccessUnitContent content)
     {
-        _units++;
+        Interlocked.Increment(ref _units);
 
         if ((content & H264AccessUnitContent.Idr) != 0)
         {
             _keyframes++;
         }
 
-        _decoder?.Enqueue(accessUnit, timestamp);
+        _video.Enqueue(accessUnit, timestamp);
     }
 
-    public MediaReport Report()
+    /// <summary>The network side's counts, read on the network thread.</summary>
+    public MediaCounts Counts()
     {
-        var counts = new MediaCounts(_decrypted, _refused, _rtcpPackets, _audio, _units, _keyframes, _depacketizer.Dropped, _reorder.Lost, _requests);
-
-        if (_decoder is null)
-        {
-            return new MediaReport(counts, 0, 0, 0, TimeSpan.Zero, TimeSpan.Zero, 0, _decoderProblem);
-        }
-
-        return new MediaReport(counts, _decoder.Pictures, _decoder.Width, _decoder.Height, _decoder.AverageDecode(), _decoder.WorstDecode(), _decoder.DeepestQueue, null);
-    }
-
-    public void Dispose()
-    {
-        _decoder?.Dispose();
-    }
-
-    private static DecodeWorker? OpenDecoder(PictureMailbox mailbox, TimeProvider clock, out string? problem)
-    {
-        var decoder = H264Decoder.TryOpen(out problem);
-
-        if (decoder is null)
-        {
-            return null;
-        }
-
-        return new DecodeWorker(decoder, mailbox, clock);
+        return new MediaCounts(_decrypted, _refused, _rtcpPackets, _audioPackets, _units, _keyframes, _depacketizer.Dropped, _reorder.Lost, _requests);
     }
 
     private void Route(ReadOnlySpan<byte> packet)
@@ -153,9 +138,10 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
             _videoSsrc = _header.Ssrc;
             _reorder.Push(packet);
         }
-        else if (_header.PayloadType == OpusPayload)
+        else if (_header.PayloadType == StreamOffer.OpusPayload)
         {
-            _audio++;
+            _audioPackets++;
+            _audio.Push(_header.Payload(packet), _header.SequenceNumber, _header.Timestamp);
         }
     }
 
@@ -174,7 +160,7 @@ public sealed class MediaReceiver : IAccessUnitSink, IDisposable
         if (_protect.TryProtectRtcp(_feedback, length, out int protectedLength))
         {
             _rtcp.Send(_feedback.AsSpan(0, protectedLength));
-            _requests++;
+            Interlocked.Increment(ref _requests);
             _lastRequest = now;
         }
     }

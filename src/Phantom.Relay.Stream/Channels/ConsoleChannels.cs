@@ -4,12 +4,13 @@ using System.Text;
 using System.Text.Json;
 using Org.BouncyCastle.Tls;
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.Stream.Link;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Sctp;
 using Phantom.Relay.Xbox.Channels;
 using Phantom.Relay.Xbox.Input;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Channels;
 
 /// <summary>
 /// The console's data channels over the DTLS session: SCTP as the DTLS client, the four channels opened, and the

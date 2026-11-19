@@ -3,11 +3,12 @@
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Network;
 
 /// <summary>
 /// This machine's IPv4 address on the network that has the default gateway: the address our host candidate
-/// announces. Read from the platform, so it lives in the tool, not in the WebRTC layer.
+/// announces. Read from the platform, so a head calls it and hands the address to the stream; the WebRTC layer never
+/// reads it. Desktop only: the browser and the PS5 heads find theirs another way.
 /// </summary>
 public static class LocalAddress
 {

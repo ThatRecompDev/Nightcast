@@ -7,11 +7,15 @@ using Phantom.Engine.Graphics.Sokol;
 using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Gamepads;
 using Phantom.Engine.Hosting.Input;
+using Phantom.Engine.Media.Vpx;
 using Phantom.Engine.Net.Transport;
 using Phantom.Engine.Net.Transport.Udp;
 using Phantom.Engine.Platform.Desktop.Storage;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Profiles;
+using Phantom.Relay.Stream.Media;
+using Phantom.Relay.Stream.Network;
+using Phantom.Relay.Stream.Setup;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.Xbox.Auth;
 using Phantom.Relay.Xbox.Session;
@@ -20,8 +24,9 @@ namespace Phantom.Relay.Tools.Probe;
 
 /// <summary>
 /// The probe's composition root. Arguments: an optional tier (P720, P1080, P1080High, P1440; the default profile's
-/// otherwise) and <c>--sign-out</c> to forget the kept account first. Tokens are kept in the user's own store
-/// (<see cref="AppId"/> under the local application data), never in the repository or the output.
+/// otherwise), <c>--view</c> to watch the stream in a window until it closes, and <c>--sign-out</c> to forget the kept
+/// account first. Tokens are kept in the user's own store (<see cref="AppId"/> under the local application data), never
+/// in the repository or the output.
 /// </summary>
 public static class ProbeProgram
 {
@@ -32,12 +37,11 @@ public static class ProbeProgram
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
 
-    /// <summary>How long a measuring run keeps the stream: enough for the channels, the first frames and a keep-alive.</summary>
-    private static readonly TimeSpan MeasureFor = TimeSpan.FromSeconds(6);
-    private const string Locale = "en-US";
-
     /// <summary>Large enough for any datagram WebRTC sends on a LAN path (the Ethernet MTU) with room to spare.</summary>
     private const int MaxDatagramLength = 2048;
+
+    /// <summary>How long a measuring run keeps the stream: enough for the channels, the first frames and a keep-alive.</summary>
+    private static readonly TimeSpan MeasureFor = TimeSpan.FromSeconds(6);
 
     public static async Task<int> Main(string[] args)
     {
@@ -60,22 +64,28 @@ public static class ProbeProgram
         }
 
         var sessions = new XHomeSessionService(http, auth, clock, NullLogger<XHomeSessionService>.Instance);
-        var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         uint? hostAddress = LocalAddress.Find();
+        using var decoder = H264Decoder.TryOpen(out string? problem);
 
-        if (hostAddress is null)
+        string? refusal = Refusal(hostAddress, decoder, problem);
+
+        if (refusal is not null || hostAddress is null || decoder is null)
         {
-            Console.WriteLine("No network with a default gateway: connect this PC to the network the console is on.");
+            Console.WriteLine(refusal);
 
             return ProbeRun.Refused;
         }
 
-        // A UDP socket on any address and a free port, for ICE and everything after it.
+        // The decode worker, and a UDP socket on any address and a free port, for ICE and everything after it.
         bool view = args.Contains(ViewArgument);
         var listen = view ? TimeSpan.MaxValue : MeasureFor;
         var mailbox = new PictureMailbox();
+        using var video = new DecodeWorker(decoder, mailbox, clock);
+        video.Start();
+
+        var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         using var transport = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
-        using var ice = new LiveIce(sessions, transport, hostAddress.Value, clock, random, mailbox, listen);
+        var ice = new LiveIce(sessions, transport, hostAddress.Value, video, clock, random, listen);
 
         // The session's certificate and the run.
         var certificate = DtlsCertificate.Create(new Org.BouncyCastle.Security.SecureRandom(), clock.GetUtcNow());
@@ -114,6 +124,22 @@ public static class ProbeProgram
         }
     }
 
+    /// <summary>Why the probe cannot run here: no network to the console, or no H.264 decoder; null when it can.</summary>
+    private static string? Refusal(uint? hostAddress, H264Decoder? decoder, string? problem)
+    {
+        if (hostAddress is null)
+        {
+            return "No network with a default gateway: connect this PC to the network the console is on.";
+        }
+
+        if (decoder is null)
+        {
+            return $"No H.264 decoder: {problem}";
+        }
+
+        return null;
+    }
+
     private static StreamSettings Settings(string[] args, TimeProvider clock)
     {
         var resolution = StreamProfile.Default.Stream.Resolution;
@@ -126,8 +152,6 @@ public static class ProbeProgram
             }
         }
 
-        int offset = (int)clock.LocalTimeZone.GetUtcOffset(clock.GetUtcNow()).TotalMinutes;
-
-        return new StreamSettings(resolution, Locale, offset);
+        return SessionSettings.For(resolution, clock);
     }
 }

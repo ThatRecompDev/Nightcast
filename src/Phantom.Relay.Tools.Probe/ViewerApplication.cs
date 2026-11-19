@@ -5,6 +5,7 @@ using System.Numerics;
 using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Media.Rendering;
+using Phantom.Relay.Stream.Media;
 
 namespace Phantom.Relay.Tools.Probe;
 

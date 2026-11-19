@@ -2,7 +2,7 @@
 
 using Phantom.Engine.Media.Video;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Media;
 
 /// <summary>
 /// A lock-free triple buffer of decoded pictures between the decode thread and the render thread. The decoder writes

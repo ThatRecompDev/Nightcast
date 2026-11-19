@@ -2,7 +2,7 @@
 
 using System.Globalization;
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Sdp;
 
 /// <summary>The RTP payload types the answer gives H.264 (a=rtpmap:&lt;pt&gt; H264/90000).</summary>
 public static class VideoPayloads

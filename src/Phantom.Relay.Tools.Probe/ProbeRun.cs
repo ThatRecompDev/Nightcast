@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.Stream.Channels;
+using Phantom.Relay.Stream.Sdp;
+using Phantom.Relay.Stream.Setup;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Ice;
 using Phantom.Relay.Xbox.Auth;
@@ -19,24 +22,22 @@ public sealed class ProbeRun
     public const int NoConsole = 2;
     public const int Refused = 3;
 
-    private readonly IXboxAuthService _auth;
+    private readonly TextSetup _setup;
     private readonly IXHomeSessionService _sessions;
     private readonly ILiveIce _ice;
     private readonly DtlsCertificate _certificate;
     private readonly IRandomSource _random;
-    private readonly TextReader _input;
     private readonly TextWriter _output;
 
     public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, ILiveIce ice, DtlsCertificate certificate, IRandomSource random, TextReader input, TextWriter output)
     {
-        _auth = auth;
+        _setup = new TextSetup(auth, sessions, input, output);
         _sessions = sessions;
         _ice = ice;
         _certificate = certificate;
 
-        // The run's randomness and its console in and out.
+        // The run's randomness and its console out.
         _random = random;
-        _input = input;
         _output = output;
     }
 
@@ -44,8 +45,8 @@ public sealed class ProbeRun
     {
         try
         {
-            await SignInAsync(cancellation);
-            var console = await ChooseConsoleAsync(cancellation);
+            await _setup.SignInAsync(cancellation);
+            var console = await _setup.ChooseConsoleAsync(cancellation);
 
             if (console is null)
             {
@@ -70,63 +71,6 @@ public sealed class ProbeRun
         }
     }
 
-    private async Task SignInAsync(CancellationToken cancellation)
-    {
-        if (!_auth.IsSignedIn)
-        {
-            _output.WriteLine("Open this page, sign in with the account that owns the console, then paste the address the page ends on:");
-            _output.WriteLine(_auth.SignInAddress);
-            _output.Write("> ");
-            string? pasted = await _input.ReadLineAsync(cancellation);
-
-            if (!Uri.TryCreate(pasted?.Trim(), UriKind.Absolute, out var redirected))
-            {
-                throw new XboxAuthException("That was not an address.");
-            }
-
-            await _auth.CompleteSignInAsync(redirected, cancellation);
-        }
-
-        var token = await _auth.GetStreamingTokenAsync(cancellation);
-        _output.WriteLine($"Signed in. Streaming region: {token.DefaultRegion.Name} ({token.Regions.Count} offered)");
-    }
-
-    private async Task<XboxConsole?> ChooseConsoleAsync(CancellationToken cancellation)
-    {
-        var consoles = await _sessions.GetConsolesAsync(cancellation);
-
-        if (consoles.Count == 0)
-        {
-            _output.WriteLine("No console found. Turn on remote features on the console (Settings, Devices & connections, Remote features).");
-
-            return null;
-        }
-
-        for (int i = 0; i < consoles.Count; i++)
-        {
-            var console = consoles[i];
-            string streaming = console.IsStreamingEnabled ? "on" : "off";
-            _output.WriteLine($"  {i + 1}. {console.Name} ({console.ConsoleType}, {console.PowerState}, streaming {streaming})");
-        }
-
-        if (consoles.Count == 1)
-        {
-            return consoles[0];
-        }
-
-        _output.Write("Console number > ");
-        string? choice = await _input.ReadLineAsync(cancellation);
-
-        if (!int.TryParse(choice, out int number) || number < 1 || number > consoles.Count)
-        {
-            _output.WriteLine("No such console.");
-
-            return null;
-        }
-
-        return consoles[number - 1];
-    }
-
     private async Task ProbeConsoleAsync(XboxConsole console, StreamSettings settings, CancellationToken cancellation)
     {
         _output.WriteLine($"Starting a session on {console.Name}, asking for {settings.Resolution} (OS name '{settings.OsName}')");
@@ -147,7 +91,7 @@ public sealed class ProbeRun
     {
         var ice = IceCredentials.Create(_random);
         _output.WriteLine("Sending the offer; the console answers:");
-        string offer = ProbeOffer.Create(ice, _certificate.Fingerprint, _random);
+        string offer = StreamOffer.Create(ice, _certificate.Fingerprint, _random);
         string answer = await _sessions.ExchangeSdpAsync(session, offer, cancellation);
 
         foreach (string line in AnswerSummary.Of(answer))
@@ -195,7 +139,7 @@ public sealed class ProbeRun
 
         if (media.DecoderProblem is not null)
         {
-            _output.WriteLine($"  decoder: could not open ({media.DecoderProblem})");
+            _output.WriteLine($"  decoder: stopped ({media.DecoderProblem})");
 
             return;
         }

@@ -15,6 +15,7 @@
   <ItemGroup>
     <ProjectReference Include="../Phantom.Relay.Http.Bcl/Phantom.Relay.Http.Bcl.csproj" />
     <ProjectReference Include="../Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
     <ProjectReference Include="../Phantom.Relay.WebRtc/Phantom.Relay.WebRtc.csproj" />
     <ProjectReference Include="../Phantom.Relay.Xbox/Phantom.Relay.Xbox.csproj" />
   </ItemGroup>

@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Link;
 
 /// <summary>Where protected RTCP feedback goes: the selected path to the console.</summary>
 public interface IRtcpOutput

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Phantom.Engine.Core" />
+    <PackageReference Include="Phantom.Engine.Media" />
+    <PackageReference Include="Phantom.Engine.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
+    <ProjectReference Include="../Phantom.Relay.WebRtc/Phantom.Relay.WebRtc.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Xbox/Phantom.Relay.Xbox.csproj" />
+  </ItemGroup>
+
+</Project>

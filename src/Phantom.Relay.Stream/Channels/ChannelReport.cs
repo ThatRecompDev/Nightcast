@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Channels;
 
 /// <summary>
 /// What the data channels did: the association's state, the channels that opened, how many messages each way, the

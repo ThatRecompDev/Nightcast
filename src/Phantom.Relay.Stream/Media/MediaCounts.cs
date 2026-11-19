@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-namespace Phantom.Relay.Tools.Probe;
+namespace Phantom.Relay.Stream.Media;
 
 /// <summary>
 /// The network side of the media path: packets decrypted and refused, RTCP and sound packets, video access units
