@@ -32,16 +32,18 @@ public static class ProbeOffer
     private const string MainProfileLevel = "4d0033";
     private const string BaselineProfileLevel = "42e033";
 
-    /// <summary>An offer with random ICE credentials: for a probe that only reads the answer.</summary>
+    /// <summary>An offer with random ICE credentials and fingerprint: for a probe that only reads the answer.</summary>
     public static string Create(IRandomSource random)
     {
-        return Create(new IceCredentials(Hex(random, UfragBytes), Hex(random, PasswordBytes)), random);
+        return Create(new IceCredentials(Hex(random, UfragBytes), Hex(random, PasswordBytes)), Fingerprint(random), random);
     }
 
-    /// <summary>An offer carrying <paramref name="ice"/>, so a live ICE agent with those credentials can answer checks.</summary>
-    public static string Create(IceCredentials ice, IRandomSource random)
+    /// <summary>
+    /// An offer carrying <paramref name="ice"/> and the certificate <paramref name="fingerprint"/>, so a live ICE agent
+    /// and DTLS client with them can connect.
+    /// </summary>
+    public static string Create(IceCredentials ice, string fingerprint, IRandomSource random)
     {
-        string fingerprint = Fingerprint(random);
         string transport = $"a=ice-ufrag:{ice.Ufrag}{Line}a=ice-pwd:{ice.Password}{Line}a=ice-options:trickle{Line}a=fingerprint:sha-256 {fingerprint}{Line}a=setup:actpass{Line}";
 
         var sdp = new StringBuilder();

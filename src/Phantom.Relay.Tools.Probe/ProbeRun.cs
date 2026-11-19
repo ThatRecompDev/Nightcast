@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Ice;
 using Phantom.Relay.Xbox.Auth;
 using Phantom.Relay.Xbox.Session;
@@ -21,15 +22,19 @@ public sealed class ProbeRun
     private readonly IXboxAuthService _auth;
     private readonly IXHomeSessionService _sessions;
     private readonly ILiveIce _ice;
+    private readonly DtlsCertificate _certificate;
     private readonly IRandomSource _random;
     private readonly TextReader _input;
     private readonly TextWriter _output;
 
-    public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, ILiveIce ice, IRandomSource random, TextReader input, TextWriter output)
+    public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, ILiveIce ice, DtlsCertificate certificate, IRandomSource random, TextReader input, TextWriter output)
     {
         _auth = auth;
         _sessions = sessions;
         _ice = ice;
+        _certificate = certificate;
+
+        // The run's randomness and its console in and out.
         _random = random;
         _input = input;
         _output = output;
@@ -142,7 +147,8 @@ public sealed class ProbeRun
     {
         var ice = IceCredentials.Create(_random);
         _output.WriteLine("Sending the offer; the console answers:");
-        string answer = await _sessions.ExchangeSdpAsync(session, ProbeOffer.Create(ice, _random), cancellation);
+        string offer = ProbeOffer.Create(ice, _certificate.Fingerprint, _random);
+        string answer = await _sessions.ExchangeSdpAsync(session, offer, cancellation);
 
         foreach (string line in AnswerSummary.Of(answer))
         {
@@ -150,7 +156,7 @@ public sealed class ProbeRun
         }
 
         _output.WriteLine("Running ICE against the console:");
-        var outcome = await _ice.RunAsync(session, ice, answer, cancellation);
+        var outcome = await _ice.RunAsync(session, ice, _certificate, answer, cancellation);
         ReportIce(outcome);
     }
 
@@ -164,7 +170,14 @@ public sealed class ProbeRun
             _output.WriteLine($"  round trip to the console: first {Milliseconds(outcome.FirstRoundTrip)}, keep-alive {Milliseconds(outcome.LatestRoundTrip)}");
         }
 
-        _output.WriteLine($"  then received: {outcome.DtlsDatagrams} DTLS, {outcome.RtpDatagrams} RTP/RTCP, {outcome.OtherDatagrams} other datagrams");
+        _output.WriteLine($"  DTLS: {outcome.DtlsResult} after {Milliseconds(outcome.DtlsElapsed)}");
+
+        if (outcome.SrtpProfile is not null)
+        {
+            _output.WriteLine($"  cipher suite 0x{outcome.CipherSuite:X4}, SRTP profile {outcome.SrtpProfile}");
+        }
+
+        _output.WriteLine($"  received after ICE: {outcome.DtlsDatagrams} DTLS, {outcome.RtpDatagrams} RTP/RTCP, {outcome.OtherDatagrams} other datagrams");
     }
 
     private static string Milliseconds(TimeSpan? span)

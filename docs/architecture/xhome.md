@@ -67,6 +67,11 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
   two candidates.
 - The console's answer says `a=setup:passive` on every m-line: the client is the DTLS client and starts the handshake;
   the console sends nothing until it does.
+- **DTLS connects**: Relay's DTLS client (BouncyCastle, a per-session ECDSA P-256 certificate whose fingerprint the
+  offer carries) completes the handshake with the console in about 73 ms: cipher suite
+  TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256 (0xC02B), SRTP profile **AEAD_AES_128_GCM**, the console's certificate
+  matching its answer's fingerprint. No RTP arrives yet: the console waits for the data channels (the control
+  channel's authorization and the message channel's handshake) before it streams.
 - No `/connect` call was needed for the console to answer the offer (open clients send one with a user token to
   `{session}/connect`; whether the console offering needs it to carry media is not known yet).
 

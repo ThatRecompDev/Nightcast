@@ -1,8 +1,12 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Org.BouncyCastle.Security;
+using Org.BouncyCastle.Tls;
+using Org.BouncyCastle.Tls.Crypto.Impl.BC;
 using Phantom.Engine.Core.Collections;
 using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Net.Transport;
+using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Ice;
 using Phantom.Relay.Xbox.Session;
 using SessionCandidate = Phantom.Relay.Xbox.Session.IceCandidate;
@@ -11,18 +15,23 @@ using WebRtcCandidate = Phantom.Relay.WebRtc.Ice.IceCandidate;
 namespace Phantom.Relay.Tools.Probe;
 
 /// <summary>
-/// ICE against the real console: our host candidate goes through the service's ICE exchange, the console's
-/// candidates come from its answer and that exchange, and the agent runs on a real UDP socket until it connects or
-/// gives up. Once connected it listens a little longer to see whether the console starts DTLS.
+/// ICE, then DTLS, against the real console. Our host candidate goes through the service's ICE exchange, and the
+/// console's candidates come from its answer and that exchange. The agent runs on a real UDP socket until it
+/// connects. On the selected path our DTLS client (the answer says the console is passive) runs its handshake on its
+/// own thread, fed by this loop. Afterwards the loop listens a little longer and counts what the console sends.
 /// </summary>
-public sealed class LiveIce : ILiveIce
+public sealed class LiveIce : ILiveIce, IDisposable
 {
     private const int Dtls = 0;
     private const int Rtp = 1;
     private const int Other = 2;
     private const int CountKinds = 3;
 
+    /// <summary>A DTLS record never exceeds this on a LAN path (the Ethernet payload less the IP and UDP headers).</summary>
+    private const int DtlsLimit = 1200;
+
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
+
     /// <summary>Longer than one keep-alive interval, so the round trip is measured again on the open path.</summary>
     private static readonly TimeSpan ListenAfterConnect = TimeSpan.FromSeconds(2.5);
 
@@ -32,6 +41,9 @@ public sealed class LiveIce : ILiveIce
     private readonly TimeProvider _clock;
     private readonly IRandomSource _random;
     private readonly ByteRing _ring;
+    private readonly int[] _counts = new int[CountKinds];
+
+    private DtlsDatagramBridge? _bridge;
 
     public LiveIce(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, TimeProvider clock, IRandomSource random)
     {
@@ -43,7 +55,7 @@ public sealed class LiveIce : ILiveIce
         _ring = new ByteRing(ByteRing.CapacityFor(DatagramFrame.FrameLength(transport.MaxDatagramLength)));
     }
 
-    public async Task<IceOutcome> RunAsync(StreamSession session, IceCredentials local, string answer, CancellationToken cancellation)
+    public async Task<IceOutcome> RunAsync(StreamSession session, IceCredentials local, DtlsCertificate certificate, string answer, CancellationToken cancellation)
     {
         var remote = SessionIce.ReadCredentials(answer);
 
@@ -57,17 +69,56 @@ public sealed class LiveIce : ILiveIce
         long start = _clock.GetTimestamp();
         agent.Start(remote, candidates);
 
-        var counts = new int[CountKinds];
-        Pump(agent, counts, Deadline, untilSettled: true, cancellation);
+        Pump(agent, Deadline, () => agent.State != IceAgentState.Checking, cancellation);
         var elapsed = _clock.GetElapsedTime(start);
         var firstRoundTrip = agent.RoundTrip;
+        var outcome = new IceOutcome(agent.State, agent.Selected, elapsed, firstRoundTrip, null, candidates.Count, 0, 0, 0);
 
         if (agent.State == IceAgentState.Connected)
         {
-            Pump(agent, counts, ListenAfterConnect, untilSettled: false, cancellation);
+            outcome = RunDtls(agent, certificate, DtlsFingerprint.Read(answer), outcome, cancellation);
+            Pump(agent, ListenAfterConnect, static () => false, cancellation);
         }
 
-        return new IceOutcome(agent.State, agent.Selected, elapsed, firstRoundTrip, agent.RoundTrip, candidates.Count, counts[Dtls], counts[Rtp], counts[Other]);
+        return outcome with { LatestRoundTrip = agent.RoundTrip, DtlsDatagrams = _counts[Dtls], RtpDatagrams = _counts[Rtp], OtherDatagrams = _counts[Other] };
+    }
+
+    public void Dispose()
+    {
+        _bridge?.Dispose();
+    }
+
+    /// <summary>Runs the handshake on its own thread while this loop carries its datagrams over the selected path.</summary>
+    private IceOutcome RunDtls(IceAgent agent, DtlsCertificate certificate, string? expected, IceOutcome outcome, CancellationToken cancellation)
+    {
+        if (expected is null)
+        {
+            return outcome with { DtlsResult = "the answer carries no fingerprint" };
+        }
+
+        _bridge = new DtlsDatagramBridge(DtlsLimit);
+        var client = new DtlsSrtpClient(new BcTlsCrypto(new SecureRandom()), certificate, expected);
+        long start = _clock.GetTimestamp();
+        var handshake = Task.Run(() => new DtlsClientProtocol().Connect(client, _bridge), cancellation);
+
+        Pump(agent, Deadline, () => handshake.IsCompleted, cancellation);
+        var elapsed = _clock.GetElapsedTime(start);
+
+        if (!handshake.IsCompleted)
+        {
+            _bridge.Close();
+
+            return outcome with { DtlsResult = "timed out", DtlsElapsed = elapsed };
+        }
+
+        if (handshake.IsFaulted)
+        {
+            string reason = handshake.Exception?.GetBaseException().Message ?? "unknown";
+
+            return outcome with { DtlsResult = $"failed: {reason}", DtlsElapsed = elapsed };
+        }
+
+        return outcome with { DtlsResult = "connected", DtlsElapsed = elapsed, SrtpProfile = client.Profile?.ToString(), CipherSuite = client.CipherSuite };
     }
 
     /// <summary>Sends our host candidate and gathers the console's from its answer and the exchange, without duplicates.</summary>
@@ -90,30 +141,25 @@ public sealed class LiveIce : ILiveIce
     }
 
     /// <summary>
-    /// Pumps without sleeping: a timed sleep on Windows lasts a whole ~15.6 ms timer tick, which alone made the first
-    /// measurement 39 ms. Yielding the thread reacts to an answer within microseconds, at the cost of one busy core
-    /// for the probe's few seconds.
+    /// Pumps without sleeping: a timed sleep on Windows lasts a whole ~15.6 ms timer tick. Yielding the thread reacts
+    /// within microseconds, at the cost of one busy core for the probe's few seconds.
     /// </summary>
-    private void Pump(IceAgent agent, int[] counts, TimeSpan length, bool untilSettled, CancellationToken cancellation)
+    private void Pump(IceAgent agent, TimeSpan length, Func<bool> done, CancellationToken cancellation)
     {
         long start = _clock.GetTimestamp();
 
-        while (_clock.GetElapsedTime(start) < length)
+        while (_clock.GetElapsedTime(start) < length && !done())
         {
-            if (untilSettled && agent.State != IceAgentState.Checking)
-            {
-                return;
-            }
-
             cancellation.ThrowIfCancellationRequested();
-            PumpOnce(agent, counts);
+            PumpOnce(agent);
             Thread.Yield();
         }
     }
 
-    private void PumpOnce(IceAgent agent, int[] counts)
+    private void PumpOnce(IceAgent agent)
     {
         agent.Service();
+        SendDtls(agent);
         _transport.Receive(_ring);
 
         while (_ring.TryPeek(out var frame))
@@ -122,26 +168,42 @@ public sealed class LiveIce : ILiveIce
 
             if (!agent.TryHandle(DatagramFrame.Source(frame), payload))
             {
-                Count(payload, counts);
+                Route(payload);
             }
 
             _ring.Release();
         }
     }
 
-    private static void Count(ReadOnlySpan<byte> payload, int[] counts)
+    private void SendDtls(IceAgent agent)
+    {
+        var path = agent.Selected;
+
+        if (_bridge is null || path is null)
+        {
+            return;
+        }
+
+        while (_bridge.TryTakeOutgoing(out var datagram))
+        {
+            _transport.TrySend(path.Value, datagram);
+        }
+    }
+
+    private void Route(ReadOnlySpan<byte> payload)
     {
         if (DatagramClass.IsDtls(payload))
         {
-            counts[Dtls]++;
+            _counts[Dtls]++;
+            _bridge?.Deliver(payload);
         }
         else if (DatagramClass.IsRtp(payload))
         {
-            counts[Rtp]++;
+            _counts[Rtp]++;
         }
         else
         {
-            counts[Other]++;
+            _counts[Other]++;
         }
     }
 }

@@ -2,6 +2,7 @@
 
 using Phantom.Engine.Core.Randomness;
 using Phantom.Relay.Tools.Probe.Tests.Fakes;
+using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.Xbox.Session;
 
 namespace Phantom.Relay.Tools.Probe.Tests;
@@ -9,6 +10,9 @@ namespace Phantom.Relay.Tools.Probe.Tests;
 public sealed class ProbeRunTests : IDisposable
 {
     private static readonly StreamSettings Settings = new(StreamResolution.P1440, "en-US", 60);
+
+    private static readonly DtlsCertificate Certificate =
+        DtlsCertificate.Create(new Org.BouncyCastle.Security.SecureRandom(), new DateTimeOffset(2026, 11, 19, 12, 0, 0, TimeSpan.Zero));
 
     private readonly FakeAuth _auth = new() { IsSignedIn = true };
     private readonly FakeSessions _sessions = new();
@@ -43,8 +47,13 @@ public sealed class ProbeRunTests : IDisposable
         Assert.Contains($"a=ice-pwd:{_ice.Local.Password}", _sessions.Offer, StringComparison.Ordinal);
         Assert.Equal(_sessions.Answer, _ice.Answer);
         Assert.Contains("ICE: Connected after 42.00 ms (2 console candidates)", _output.ToString(), StringComparison.Ordinal);
-        Assert.Contains("then received: 3 DTLS", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("received after ICE: 3 DTLS", _output.ToString(), StringComparison.Ordinal);
         Assert.Contains("round trip to the console: first 1.25 ms", _output.ToString(), StringComparison.Ordinal);
+
+        Assert.Contains($"a=fingerprint:sha-256 {Certificate.Fingerprint}", _sessions.Offer, StringComparison.Ordinal);
+        Assert.Same(Certificate, _ice.Certificate);
+        Assert.Contains("DTLS: connected after 8.00 ms", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("cipher suite 0xC02B, SRTP profile AeadAes128Gcm", _output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,7 +119,7 @@ public sealed class ProbeRunTests : IDisposable
 
     private Task<int> Run(string input)
     {
-        var run = new ProbeRun(_auth, _sessions, _ice, new SeededRandomSource(1), new StringReader(input), _output);
+        var run = new ProbeRun(_auth, _sessions, _ice, Certificate, new SeededRandomSource(1), new StringReader(input), _output);
 
         return run.RunAsync(Settings, CancellationToken.None);
     }

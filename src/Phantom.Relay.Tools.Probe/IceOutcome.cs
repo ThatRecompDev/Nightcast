@@ -20,4 +20,14 @@ public sealed record IceOutcome(
     int RemoteCandidates,
     int DtlsDatagrams,
     int RtpDatagrams,
-    int OtherDatagrams);
+    int OtherDatagrams)
+{
+    /// <summary>How the DTLS handshake ended: "not run", "connected", "timed out" or the failure.</summary>
+    public string DtlsResult { get; init; } = "not run";
+
+    public TimeSpan? DtlsElapsed { get; init; }
+
+    public string? SrtpProfile { get; init; }
+
+    public int CipherSuite { get; init; }
+}

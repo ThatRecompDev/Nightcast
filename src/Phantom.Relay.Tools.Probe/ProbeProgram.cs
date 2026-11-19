@@ -8,6 +8,7 @@ using Phantom.Engine.Net.Transport.Udp;
 using Phantom.Engine.Platform.Desktop.Storage;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Profiles;
+using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.Xbox.Auth;
 using Phantom.Relay.Xbox.Session;
 
@@ -61,8 +62,9 @@ public static class ProbeProgram
 
         // A UDP socket on any address and a free port, for ICE and everything after it.
         using var transport = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
-        var ice = new LiveIce(sessions, transport, hostAddress.Value, clock, random);
-        var run = new ProbeRun(auth, sessions, ice, random, Console.In, Console.Out);
+        using var ice = new LiveIce(sessions, transport, hostAddress.Value, clock, random);
+        var certificate = DtlsCertificate.Create(new Org.BouncyCastle.Security.SecureRandom(), clock.GetUtcNow());
+        var run = new ProbeRun(auth, sessions, ice, certificate, random, Console.In, Console.Out);
 
         return await run.RunAsync(Settings(args, clock), cancellation.Token);
     }
