@@ -22,7 +22,8 @@ fi
 
 added=$(git diff --cached --diff-filter=AM -U0 | grep '^+' | grep -v '^+++')
 
-if printf '%s\n' "$added" | grep -qiE '[A-Z]:[\\/]Users[\\/]|/home/[a-z][a-z0-9_-]*/|/Users/[A-Za-z]'; then
+# A home folder only where a path starts, so a URL segment such as the service's "sessions/home/" is not one.
+if printf '%s\n' "$added" | grep -qiE '[A-Z]:[\\/]Users[\\/]|(^|[^A-Za-z0-9_.-])/home/[a-z][a-z0-9_-]*/|(^|[^A-Za-z0-9_.-])/Users/[A-Za-z]'; then
     fail "an absolute user path is being added"
 fi
 
