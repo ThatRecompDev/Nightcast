@@ -32,6 +32,7 @@ using Phantom.Relay.Pads.Windows;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Network;
 using Phantom.Relay.Stream.Setup;
@@ -43,7 +44,9 @@ namespace Phantom.Relay.Desktop;
 /// <summary>
 /// The desktop's composition root: sign-in on the console window (the kept account, or the sign-in page and the pasted
 /// address), the console choice, then the stream in a resizable window with the H.264 decoder and the XInput pads.
-/// Closing the window or Escape stops the stream and the session. <c>--sign-out</c> forgets the kept account first.
+/// Closing the window or Escape stops the stream and the session. <c>--sign-out</c> forgets the kept account first;
+/// the bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
+/// <c>--twcc</c>) turn on what the probe found to work, all off without them.
 /// Tokens stay in the user's own store, never in the output.
 /// </summary>
 public static class DesktopProgram
@@ -62,6 +65,13 @@ public static class DesktopProgram
 
     public static async Task<int> Main(string[] args)
     {
+        if (!BitrateFeedbackArguments.TryParse(args, out var feedback, out string? wrong))
+        {
+            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}");
+
+            return Refused;
+        }
+
         using var cancellation = new CancellationTokenSource();
         Console.CancelKeyPress += (_, press) =>
         {
@@ -91,7 +101,7 @@ public static class DesktopProgram
         var profiles = BuiltInProfiles.With(new ProfileStore(store).LoadAll());
         var settings = SessionSettings.For(ProfileChoice.For(profiles, null).Stream.Resolution, clock);
 
-        return StreamConsole(sessions, console, profiles, settings, clock);
+        return StreamConsole(sessions, console, profiles, settings, feedback, clock);
     }
 
     /// <summary>Signs in and picks the console; null when there is none or the service refused.</summary>
@@ -118,7 +128,7 @@ public static class DesktopProgram
     }
 
     /// <summary>Streams the console in the window until it closes, then stops the stream, the sound and the pads.</summary>
-    private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, TimeProvider clock)
+    private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, BitrateFeedback feedback, TimeProvider clock)
     {
         // The log: the engine's ring, written to the console's error stream after every frame.
         using var logs = new RingLoggerFactory(LogOptions.Default, clock);
@@ -149,8 +159,8 @@ public static class DesktopProgram
         // The stream itself, on its own network thread.
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         using var connection = new StreamConnection(sessions, transport, doorbell, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
-        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}. F3 shows the stats; Escape ends.");
-        connection.Start(console.ServerId, settings);
+        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats; Escape ends.");
+        connection.Start(console.ServerId, settings, feedback);
 
         RunWindow(connection, ProfileChoice.For(profiles, null), pump, clock, new Logger<StreamApplication>(logs));
         connection.Stop();

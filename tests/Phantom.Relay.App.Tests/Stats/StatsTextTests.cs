@@ -30,6 +30,8 @@ public sealed class StatsTextTests
         PacketsLost = 2,
         KeyframeRequests = 1,
         InputReportsSent = 40,
+        VideoMegabitsPerSecond = 14.04,
+        AudioMegabitsPerSecond = 0.128,
     };
 
     private static readonly PresentStats Present = new(TimeSpan.FromMilliseconds(6.2), TimeSpan.FromMilliseconds(9.5), TimeSpan.FromMilliseconds(0.1), OnGpu: true);
@@ -44,7 +46,7 @@ public sealed class StatsTextTests
         {
             string title = StatsText.WithStats(Streaming, Present, GpuPictureReport.Idle with { Path = GpuPictureReport.ZeroCopy });
 
-            Assert.Equal("Phantom.Relay | 2560x1440 | 60 fps in, 59 decoded (30 new, 30 repeated, every other repeated) | decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms | to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms | GPU zero-copy | LSFG off | RTT 0.4 ms | DTLS 73.0 ms | lost 2, PLI 1, pad reports 40", title);
+            Assert.Equal("Phantom.Relay | 2560x1440 | 60 fps in, 59 decoded (30 new, 30 repeated, every other repeated) | decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms | to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms | GPU zero-copy | LSFG off | video 14.0 Mbit/s, sound 0.13 Mbit/s | RTT 0.4 ms | DTLS 73.0 ms | lost 2, PLI 1, pad reports 40", title);
         }
         finally
         {
@@ -60,6 +62,17 @@ public sealed class StatsTextTests
         string title = StatsText.Title(Streaming, Present, report);
 
         Assert.Equal("Phantom.Relay | 60 fps, 30 new | to screen 6.2 ms | GPU zero-copy | LSFG x2 (quality) 0.8 ms | RTT 0.4 ms | lost 2", title);
+        Assert.True(Encoding.UTF8.GetByteCount(title) <= StatsText.MaxTitleBytes);
+    }
+
+    [Fact]
+    public void The_video_bitrate_ends_the_title_when_it_fits()
+    {
+        var report = new GpuPictureReport(GpuPictureReport.ZeroCopy, GpuPictureReport.GenerationOff);
+
+        string title = StatsText.Title(Streaming, Present, report);
+
+        Assert.EndsWith(" | lost 2 | 14.0 Mbit/s", title, StringComparison.Ordinal);
         Assert.True(Encoding.UTF8.GetByteCount(title) <= StatsText.MaxTitleBytes);
     }
 
@@ -104,7 +117,7 @@ public sealed class StatsTextTests
                     "to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms",
                     "GPU zero-copy",
                     "LSFG x2 (quality) 0.8 ms",
-                    "RTT 0.4 ms, DTLS 73.0 ms",
+                    "RTT 0.4 ms, DTLS 73.0 ms, video 14.0 Mbit/s, sound 0.13",
                     "lost 2, PLI 1, pad reports 40",
                     "input: keyboard and mouse",
                 ],
@@ -138,7 +151,7 @@ public sealed class StatsTextTests
         string[] lines = StatsText.Lines(StreamStats.Idle with { State = StreamState.Connecting }, default, GpuPictureReport.Idle, PadSource.Controller);
 
         Assert.Equal("Connecting", lines[0]);
-        Assert.Equal("RTT -, DTLS -", lines[6]);
+        Assert.Equal("RTT -, DTLS -, video 0.0 Mbit/s, sound 0.00", lines[6]);
     }
 
     [Fact]

@@ -15,7 +15,7 @@ namespace Phantom.Relay.App.Stats;
 /// picture's size, frames received and decoded per second (the new pictures, the repeats and the cadence), the decode time (average and worst) and of it the CPU's
 /// hand-off of the picture to the renderer, the time from decode to present (average and worst) and the render
 /// thread's CPU time for the picture, how the pictures come (on the GPU or read back) and what frame generation does,
-/// the path's round trip, the DTLS time, losses, keyframe requests and pad reports. Numbers in the invariant culture.
+/// the video and sound bitrates, the path's round trip, the DTLS time, losses, keyframe requests and pad reports. Numbers in the invariant culture.
 /// </summary>
 public static class StatsText
 {
@@ -60,6 +60,13 @@ public static class StatsText
         string title = string.Create(
             CultureInfo.InvariantCulture,
             $"{Plain(stats)} | {stats.FramesReceivedPerSecond:F0} fps, {stats.NewPicturesPerSecond:F0} new | to screen {Milliseconds(present.DecodeToPresent)} | {PathShort(pictures.Path)} | {Before(pictures.FrameGeneration)} | RTT {Milliseconds(stats.IceRoundTrip)} | lost {stats.PacketsLost}");
+        string withBitrate = string.Create(CultureInfo.InvariantCulture, $"{title} | {stats.VideoMegabitsPerSecond:F1} Mbit/s");
+
+        // The video bitrate goes last, and only when the whole title still fits.
+        if (Encoding.UTF8.GetByteCount(withBitrate) <= MaxTitleBytes)
+        {
+            return withBitrate;
+        }
 
         return Clamp(title);
     }
@@ -88,7 +95,7 @@ public static class StatsText
     {
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded ({stats.NewPicturesPerSecond:F0} new, {stats.RepeatedPicturesPerSecond:F0} repeated, {Cadence(stats.Cadence)}) | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)} | to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)} | {pictures.Path} | {pictures.FrameGeneration} | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
+            $"{Plain(stats)} | {stats.Width}x{stats.Height} | {stats.FramesReceivedPerSecond:F0} fps in, {stats.FramesDecodedPerSecond:F0} decoded ({stats.NewPicturesPerSecond:F0} new, {stats.RepeatedPicturesPerSecond:F0} repeated, {Cadence(stats.Cadence)}) | decode {Milliseconds(stats.DecodeAverage)} avg, {Milliseconds(stats.DecodeWorst)} worst, hand-off {Milliseconds(stats.HandOffAverage)} | to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)} | {pictures.Path} | {pictures.FrameGeneration} | video {stats.VideoMegabitsPerSecond:F1} Mbit/s, sound {stats.AudioMegabitsPerSecond:F2} Mbit/s | RTT {Milliseconds(stats.IceRoundTrip)} | DTLS {Milliseconds(stats.DtlsTime)} | lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}");
     }
 
     /// <summary>
@@ -112,7 +119,7 @@ public static class StatsText
             string.Create(invariant, $"to screen {Milliseconds(present.DecodeToPresent)} avg, {Milliseconds(present.DecodeToPresentWorst)} worst, picture CPU {Milliseconds(present.PictureCpu)}"),
             Shorten(pictures.Path),
             Shorten(pictures.FrameGeneration),
-            string.Create(invariant, $"RTT {Milliseconds(stats.IceRoundTrip)}, DTLS {Milliseconds(stats.DtlsTime)}"),
+            string.Create(invariant, $"RTT {Milliseconds(stats.IceRoundTrip)}, DTLS {Milliseconds(stats.DtlsTime)}, video {stats.VideoMegabitsPerSecond:F1} Mbit/s, sound {stats.AudioMegabitsPerSecond:F2}"),
             string.Create(invariant, $"lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}"),
             string.Create(invariant, $"input: {Hands(source)}"),
         ];
