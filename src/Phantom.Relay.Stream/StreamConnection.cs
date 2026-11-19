@@ -10,6 +10,7 @@ using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.Stream.Logging;
 using Phantom.Relay.Stream.Media;
+using Phantom.Relay.Stream.Network;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Ice;
@@ -22,8 +23,10 @@ namespace Phantom.Relay.Stream;
 /// One streaming session from start to stop. <see cref="Start"/> starts the session through the streaming service,
 /// sends the offer, runs ICE, DTLS, SCTP and the data channels, and receives the media; <see cref="Stop"/> stops the
 /// session on the console. All of it runs on one network thread this class owns, which never sleeps on a timer (a
-/// Windows timer tick is ~15.6 ms of latency): it yields between turns until the engine's wait-for-datagram call on
-/// the transport port replaces the yield. Video is decoded on a worker thread by the injected decoder into
+/// Windows timer tick is ~15.6 ms of latency). While streaming it waits for the next datagram where the transport
+/// offers that (the engine's <see cref="IDatagramWaiter"/>: woken within microseconds of an arrival), and the injected
+/// <see cref="IStreamWaker"/> wakes it for a pad change; during the handshakes, and on a transport that cannot wait,
+/// it yields between turns. Video is decoded on a worker thread by the injected decoder into
 /// <see cref="Pictures"/>; sound goes to the injected sink from the network thread; pads go out through
 /// <see cref="SendPad"/> the moment the network thread sees them. <see cref="Stats"/> is an immutable snapshot any
 /// thread reads. An error ends the stream as <see cref="StreamState.Failed"/> with its reason, never as an exception on
@@ -35,11 +38,19 @@ public sealed class StreamConnection : IDisposable
     private static readonly TimeSpan DtlsDeadline = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>
+    /// The longest wait for a datagram while streaming. A wait that times out lasts a timer tick whatever is asked, so
+    /// this only bounds how late the once-a-second work runs when the console falls silent; arrivals and pad changes
+    /// end the wait at once.
+    /// </summary>
+    private static readonly TimeSpan DatagramWait = TimeSpan.FromMilliseconds(5);
+
     /// <summary>The service ends a session without one (docs/architecture/xhome.md#sessions).</summary>
     private static readonly TimeSpan KeepAliveInterval = TimeSpan.FromSeconds(30);
 
     private readonly IXHomeSessionService _sessions;
     private readonly IDatagramTransport _transport;
+    private readonly IStreamWaker _waker;
     private readonly uint _hostAddress;
     private readonly IVideoDecoder _decoder;
     private readonly IStreamAudioSink _audio;
@@ -58,13 +69,17 @@ public sealed class StreamConnection : IDisposable
 
     /// <summary>
     /// <c>hostAddress</c> is this machine's IPv4 address on the console's network, for the host candidate; the
-    /// <c>decoder</c> is the head's (it stays the head's to dispose, after the connection); the running title picks one of
-    /// the player's <c>profiles</c>.
+    /// <c>waker</c> ends the network thread's wait for a datagram (a <see cref="LoopbackDoorbell"/> on the transport's
+    /// port, or a <see cref="NoWaker"/> for a transport that cannot wait); the <c>decoder</c> is the head's (it stays the
+    /// head's to dispose, after the connection); the running title picks one of the player's <c>profiles</c>.
     /// </summary>
-    public StreamConnection(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, IVideoDecoder decoder, IStreamAudioSink audio, IReadOnlyList<StreamProfile> profiles, TimeProvider clock, IRandomSource random, ILogger<StreamConnection> log)
+    public StreamConnection(IXHomeSessionService sessions, IDatagramTransport transport, IStreamWaker waker, uint hostAddress, IVideoDecoder decoder, IStreamAudioSink audio, IReadOnlyList<StreamProfile> profiles, TimeProvider clock, IRandomSource random, ILogger<StreamConnection> log)
     {
         _sessions = sessions;
         _transport = transport;
+        _waker = waker;
+
+        // The session's own pieces: where it streams from, its decoder, its sound and the player's profiles.
         _hostAddress = hostAddress;
         _decoder = decoder;
         _audio = audio;
@@ -112,6 +127,7 @@ public sealed class StreamConnection : IDisposable
     public void SendPad(byte index, in XboxPadState pad)
     {
         _pads.Post(index, in pad);
+        _waker.Wake();
     }
 
     /// <summary>Ends the stream and stops the session on the console; returns once the network thread ended.</summary>
@@ -258,11 +274,23 @@ public sealed class StreamConnection : IDisposable
                 keepAliveAt = now + Ticks(KeepAliveInterval);
             }
 
-            // Yield, never sleep: see the class summary.
-            Thread.Yield();
+            WaitForWork();
         }
 
         return null;
+    }
+
+    /// <summary>Until a datagram arrives or a pad changes, where the transport can wait; a yield where it cannot.</summary>
+    private void WaitForWork()
+    {
+        if (_transport is IDatagramWaiter waiter)
+        {
+            waiter.WaitForDatagram(DatagramWait);
+        }
+        else
+        {
+            Thread.Yield();
+        }
     }
 
     /// <summary>

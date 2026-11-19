@@ -5,6 +5,7 @@ using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Testing.Time;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Stream.Media;
+using Phantom.Relay.Stream.Network;
 using Phantom.Relay.Stream.Tests.Fakes;
 using Phantom.Relay.Xbox.Input;
 using Phantom.Relay.Xbox.Session;
@@ -35,6 +36,7 @@ public sealed class StreamConnectionTests : IDisposable
         _connection = new StreamConnection(
             _sessions,
             _transport,
+            new NoWaker(),
             HostAddress,
             _decoder,
             new SilentAudioSink(),

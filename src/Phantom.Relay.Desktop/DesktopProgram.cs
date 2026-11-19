@@ -138,9 +138,14 @@ public static class DesktopProgram
         pump.Drain();
 
         // A UDP socket on any address and a free port, for ICE and everything after it.
+        // The doorbell is a second socket: a pad change wakes the network thread's wait through it.
         using var transport = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
+        using var bell = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
+        var doorbell = new LoopbackDoorbell(bell, transport.LocalEndpoint.Port);
+
+        // The stream itself, on its own network thread.
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
-        using var connection = new StreamConnection(sessions, transport, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
+        using var connection = new StreamConnection(sessions, transport, doorbell, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
         Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}. F3 shows the stats; Escape ends.");
         connection.Start(console.ServerId, settings);
 
