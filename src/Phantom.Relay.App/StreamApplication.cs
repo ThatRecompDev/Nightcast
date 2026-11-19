@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Numerics;
+using Microsoft.Extensions.Logging;
 using Phantom.Engine.Graphics.Devices;
 using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Media.Rendering;
 using Phantom.Relay.App.Input;
+using Phantom.Relay.App.Logging;
 using Phantom.Relay.App.Pictures;
 using Phantom.Relay.App.Stats;
 using Phantom.Relay.Profiles;
@@ -24,7 +26,7 @@ namespace Phantom.Relay.App;
 /// Each new picture's time from decode to present and each frame's CPU time for its picture go to the stats
 /// (<see cref="PresentMeter"/>). It plays under the running game's profile, switching when the console names another
 /// title; a keyboard and mouse profile locks the mouse to the window while it has the focus (F10 frees or takes it).
-/// F3 shows the stats in the window's title, rebuilt only when a new snapshot arrives. Escape closes the window, except
+/// F3 shows the stats, short in the window's title and in full in the log, rebuilt only when a new snapshot arrives. Escape closes the window, except
 /// while keyboard and mouse play, when it is the game's and Shift+Escape closes it; closing it stops the stream, and
 /// with it the session on the console.
 /// </summary>
@@ -43,6 +45,7 @@ public sealed class StreamApplication : IApplication
     private readonly GpuPicturePresenter? _gpu;
     private readonly TimeProvider _clock;
     private readonly PresentMeter _meter = new();
+    private readonly ILogger<StreamApplication> _log;
 
     private TimeSpan _now;
     private bool _onGpu;
@@ -52,14 +55,16 @@ public sealed class StreamApplication : IApplication
     private StreamProfile? _profile;
     private bool _captureMouse;
 
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, TimeProvider clock)
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, TimeProvider clock, ILogger<StreamApplication> log)
     {
+        _log = log;
+        _clock = clock;
+
         _device = device;
         _window = window;
         _stream = stream;
         _pads = pads;
         _reports = reports;
-        _clock = clock;
 
         // Pictures read back, and those left on the GPU where the decoder can share them.
         _renderer = new MovieRenderer(device);
@@ -289,7 +294,13 @@ public sealed class StreamApplication : IApplication
 
         if (_showStats)
         {
-            _window.SetTitle(StatsText.WithStats(stats, present, Report()));
+            var report = Report();
+            _window.SetTitle(StatsText.Title(stats, present, report));
+
+            if (_log.IsEnabled(LogLevel.Information))
+            {
+                _log.Stats(StatsText.WithStats(stats, present, report));
+            }
         }
         else
         {

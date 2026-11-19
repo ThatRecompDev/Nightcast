@@ -150,7 +150,7 @@ public static class DesktopProgram
         Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}. F3 shows the stats; Escape ends.");
         connection.Start(console.ServerId, settings);
 
-        RunWindow(connection, ProfileChoice.For(profiles, null), pump, clock);
+        RunWindow(connection, ProfileChoice.For(profiles, null), pump, clock, new Logger<StreamApplication>(logs));
         connection.Stop();
         speakers.Stop();
         pump.Flush();
@@ -222,35 +222,35 @@ public static class DesktopProgram
     /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
     /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
     /// </summary>
-    private static void RunWindow(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock)
+    private static void RunWindow(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         if (OperatingSystem.IsWindows())
         {
-            RunWindowWithWindowsPads(connection, profile, pump, clock);
+            RunWindowWithWindowsPads(connection, profile, pump, clock, log);
 
             return;
         }
 
-        Run(connection, profile, new NoGamepads(), pump, clock);
+        Run(connection, profile, new NoGamepads(), pump, clock, log);
     }
 
     [SupportedOSPlatform("windows")]
-    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock)
+    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), pump, clock);
+        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), pump, clock, log);
         playStation.Stop();
     }
 
     /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame.</summary>
-    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, LogPump pump, TimeProvider clock)
+    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, clock);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, clock, log);
         var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);

@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Globalization;
+using System.Text;
 using Phantom.Relay.App.Stats;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
@@ -48,6 +49,30 @@ public sealed class StatsTextTests
         {
             CultureInfo.CurrentCulture = culture;
         }
+    }
+
+    [Fact]
+    public void The_titles_stats_fit_the_windows_title()
+    {
+        var report = new GpuPictureReport(GpuPictureReport.ZeroCopy, "LSFG x2 (quality) 0.8 ms");
+
+        string title = StatsText.Title(Streaming, Present, report);
+
+        Assert.Equal("Phantom.Relay | 60 fps, 30 new | to screen 6.2 ms | GPU zero-copy | LSFG x2 (quality) 0.8 ms | RTT 0.4 ms | lost 2", title);
+        Assert.True(Encoding.UTF8.GetByteCount(title) <= StatsText.MaxTitleBytes);
+    }
+
+    [Fact]
+    public void A_long_title_is_cut_to_what_the_window_keeps_and_its_reasons_left_to_the_log()
+    {
+        var failed = Streaming with { State = StreamState.Failed, FailureReason = new string('é', 200) };
+        var report = new GpuPictureReport($"{GpuPictureReport.ReadBack}: the device opens no shared textures", "LSFG off: Lossless Scaling was not found");
+
+        string title = StatsText.Title(failed, Present, report);
+
+        Assert.True(Encoding.UTF8.GetByteCount(title) <= StatsText.MaxTitleBytes);
+        Assert.Contains(" | to screen", StatsText.Title(Streaming, Present, report), StringComparison.Ordinal);
+        Assert.DoesNotContain("not found", StatsText.Title(Streaming, Present, report), StringComparison.Ordinal);
     }
 
     [Fact]
