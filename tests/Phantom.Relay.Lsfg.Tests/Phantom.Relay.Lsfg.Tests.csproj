@@ -21,4 +21,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The decoder's tests' synthetic H.264 stream, so the frame generation's cost is measured on decoded pictures. -->
+  <ItemGroup>
+    <Compile Include="../Phantom.Relay.Media.Windows.Tests/SyntheticH264Encoding.cs" Link="Live/SyntheticH264Encoding.cs" />
+  </ItemGroup>
+
 </Project>

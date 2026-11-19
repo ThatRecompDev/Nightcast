@@ -171,6 +171,33 @@ as soon as they are made, the new picture half a source interval later, as desig
 reflecting its shaders, building the pipeline) takes about a quarter of a second, once, on the decode thread, when a
 profile turns it on: a single hitch as the game starts.
 
+### Why a live stream showed 4 to 5 ms (2026-11-19)
+
+A live GTA VI run showed 4 to 5 ms in the stats where the benchmark gave 0.83 ms. `LsfgCostLiveTests` reproduces the
+stream's path on the decoder's own device: a 1440p H.264 stream (Windows' encoder, at test time) decoded by the
+hardware decoder, every other unit a new picture through the stage's steps with a GPU timestamp after each:
+
+| Run | NV12 to RGBA | real frame's passes | generated frame's passes | RGBA to NV12 | stage bracket |
+|---|---|---|---|---|---|
+| back to back, bracket right after the decode (as the stream) | 0.000 | 0.244 | 0.532 | 0.007 | 0.78 ms |
+| back to back, bracket once the decode is done | 0.000 | 0.246 | 0.519 | 0.007 | 0.77 ms |
+| a unit every 16 ms (the console's rate), 2 s | 0.000 | 0.298 | 0.658 | 0.007 | 0.96 ms |
+| a unit every 16 ms, 10 s, per second | | | | | 0.78, 1.8, 5.7, 6.3, 11.5 ms |
+
+So none of the suspects: the decode is not inside the bracket (opening it after the decode is done changes nothing;
+the decode itself takes about 2 ms of the video engine, never counted), the conversions run on the video processor and
+cost the 3D queue nothing measurable (their wait shows in the real frame's first copy), the decoder hands out 6
+surfaces whose input views are made once, nothing is created per picture, and nothing maps or waits on the CPU. It is
+the shaders' own work, at the GPU's clock: `nvidia-smi` beside the 10-second run shows the RTX 4090 at P0 (2535 MHz)
+for the first second and then stepping down to P5 and P8 (435 to 210 MHz) under a load this light (a millisecond
+every 33), the bracket growing in step (0.78 ms at 2535 MHz, 11.5 ms at 210 MHz: the clock ratio), and a 32 ms stall
+when it climbs back. The live stream's 4 to 5 ms is the same pass work at an intermediate state (the renderer keeps
+some load on the GPU). Nothing in Relay is wrong; the fix is the driver's power policy for the app: NVIDIA Control
+Panel, Manage 3D settings, Program settings, `Phantom.Relay.Desktop.exe`, Power management mode "Prefer maximum
+performance" (only a live run confirms the stats then read about 0.8 ms; it also shortens the decode and the
+present). Relay does not keep the GPU busy on purpose, nor lock its clocks (`SetStablePowerState` needs developer mode
+and pins the base clock, below boost).
+
 Not settled until a live run with a 30 fps game: the pacing of a dipping game from the RTP timestamps (pinned by
 tests on a manual clock only) and the held-picture threshold (synthetic sizes; the second refinement's real size is
 not measured yet).
