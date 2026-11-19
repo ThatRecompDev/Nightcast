@@ -70,6 +70,9 @@ public sealed class SctpAssociation
     /// <summary>True when the peer announced FORWARD TSN, so partially reliable messages can be given up.</summary>
     public bool PeerSupportsPartialReliability => _peer.ForwardTsn;
 
+    /// <summary>Streams this side announces both ways; stream identifiers lie below it.</summary>
+    public int Streams => _options.Streams;
+
     /// <summary>Streams this side may send on: the fewer of its own and the peer's inbound streams.</summary>
     public int OutboundStreams => _sender.OutboundStreams;
 
