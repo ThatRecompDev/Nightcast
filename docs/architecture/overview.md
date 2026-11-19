@@ -86,8 +86,18 @@ Stream: the decode thread's `IGpuPictureProducer` and the render thread's `IGpuP
 4. Anything missing (software decoding, no shared textures, an adapter that will not move, a ring the device refuses)
    leaves the pictures on the read-back path, and the F3 stats say why.
 
-Measured on the owner's RTX 4090 (Live tests, 1440p): the read-back costs the decode thread 4.2 ms a picture; the GPU
-hand-off (wait, copy and fence, queued) 0.3 ms.
+Measured on the owner's RTX 4090 and 240 Hz display (2026-11-19, a synthetic 1440p stream at 60 fps decoded on DXVA
+and drawn by the engine's own device in a window, 600 frames per path):
+
+| | Read back (before) | On the GPU (after) |
+|---|---|---|
+| Decode to present, average | 10.8 ms | 6.3 ms |
+| Decode to present, worst | 15.0 ms | 7.0 ms |
+| Decode thread CPU per picture (decode and hand-off) | 4.8 ms | 0.9 ms |
+| of it the hand-off (read-back, or the copy's queueing) | 4.2 ms | 0.1 ms |
+| Render thread CPU per frame for the picture | 0.27 ms (upload) | 0.01 ms (access, draw) |
+
+The decode-to-present time includes the wait for the display's next refresh, as a real frame's does.
 
 ## The browser
 

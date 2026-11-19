@@ -106,21 +106,25 @@ public sealed class StreamApplication : IApplication
 
     /// <summary>
     /// The newest picture, letterboxed to 16:9, then the commit; the GPU path's access ends after it. The CPU time of
-    /// getting the picture on screen is measured without the commit, and a new picture's time since its decode with it.
+    /// the picture's own work (taking it, uploading or opening it, drawing it, ending its access) is measured without
+    /// the pass's start and the commit, which wait for the display; a new picture's time since its decode with them.
     /// </summary>
     private void Present()
     {
         long started = _clock.GetTimestamp();
         TakePicture();
+        long taken = _clock.GetTimestamp();
         _device.BeginFramePass(Black);
-        DrawPicture(PictureLetterbox.Of(_window.Width, _window.Height));
-        _device.EndPass();
 
+        long begun = _clock.GetTimestamp();
+        DrawPicture(PictureLetterbox.Of(_window.Width, _window.Height));
         long drawn = _clock.GetTimestamp();
+        _device.EndPass();
         _device.Commit();
+
         long committed = _clock.GetTimestamp();
         _gpu?.EndFrame();
-        _meter.Frame(_clock.GetElapsedTime(started, drawn) + _clock.GetElapsedTime(committed));
+        _meter.Frame(_clock.GetElapsedTime(started, taken) + _clock.GetElapsedTime(begun, drawn) + _clock.GetElapsedTime(committed));
 
         if (_fresh)
         {
