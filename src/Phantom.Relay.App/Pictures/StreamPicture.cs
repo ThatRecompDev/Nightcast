@@ -35,7 +35,7 @@ public sealed class StreamPicture
     private readonly MovieRenderer _offscreen;
     private readonly GpuPicturePresenter? _gpu;
     private readonly StreamUpscaler _upscaler;
-    private readonly double[] _passTimes;
+    private double[] _passTimes = [];
     private bool _upscaled;
     private bool _timing;
     private double _upscaleMilliseconds;
@@ -50,7 +50,6 @@ public sealed class StreamPicture
         _renderer = new MovieRenderer(device);
         _offscreen = new MovieRenderer(device);
         _upscaler = new StreamUpscaler(device);
-        _passTimes = new double[Math.Max(1, device.Capabilities.MaxTimedPasses)];
 
         if (stream.GpuPictures is not null)
         {
@@ -84,8 +83,10 @@ public sealed class StreamPicture
         }
     }
 
+    /// <summary>Once the device exists (its capabilities are readable only from here on): the renderers and the pass times.</summary>
     public void Initialize()
     {
+        _passTimes = new double[Math.Max(1, _device.Capabilities.MaxTimedPasses)];
         _renderer.Initialize(PassTarget.Frame, BlendMode.None);
         _offscreen.Initialize(PassTarget.Offscreen, BlendMode.None);
         _upscaler.Initialize();
