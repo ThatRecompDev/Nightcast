@@ -13,7 +13,7 @@ namespace Phantom.Relay.Profiles.Input;
 /// <see cref="PadSettings"/>) and keyboard and mouse (<see cref="KeyboardMouseMapper"/>, the pad at rest unless the
 /// profile switches them on), merged so a player can mix them (<see cref="PadMerge"/>). A window that lost focus
 /// has no keys or mouse buttons held (the engine lets them go); the mouse's stick is centred at once. When to send it
-/// is the report policy's. Made once per profile; a frame allocates nothing.
+/// is <see cref="PadReportPolicy"/>'s. Made once per profile; a frame allocates nothing.
 /// </summary>
 public sealed class PadComposer
 {
