@@ -10,6 +10,15 @@ internal static partial class NativeMethods
     private const string MediaFoundation = "mfplat.dll";
     private const string Com = "ole32.dll";
     private const string Direct3D11 = "d3d11.dll";
+    private const string Dxgi = "dxgi.dll";
+    private const string Kernel = "kernel32.dll";
+
+    [LibraryImport(Dxgi)]
+    internal static partial int CreateDXGIFactory1(in Guid interfaceId, out nint factory);
+
+    [LibraryImport(Kernel, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool CloseHandle(nint handle);
 
     [LibraryImport(MediaFoundation)]
     internal static partial int MFStartup(uint version, uint flags);

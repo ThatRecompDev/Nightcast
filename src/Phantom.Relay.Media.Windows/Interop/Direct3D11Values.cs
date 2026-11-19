@@ -42,6 +42,15 @@ internal static class Direct3D11Values
     /// <summary>D3D11_BIND_DECODER: a decoder's output surface, which a video processor accepts as input.</summary>
     public const uint BindDecoder = 0x200;
 
+    /// <summary>D3D_DRIVER_TYPE_UNKNOWN (d3dcommon.h): the driver of the adapter given to D3D11CreateDevice.</summary>
+    public const int UnknownDriver = 0;
+
+    /// <summary>D3D11_RESOURCE_MISC_SHARED: a texture another device may open.</summary>
+    public const uint MiscShared = 0x2;
+
+    /// <summary>D3D11_RESOURCE_MISC_SHARED_NTHANDLE: shared through an NT handle (IDXGIResource1::CreateSharedHandle).</summary>
+    public const uint MiscSharedNtHandle = 0x800;
+
     /// <summary>D3D11_SRV_DIMENSION_TEXTURE2D.</summary>
     public const uint ShaderResourceTexture2D = 4;
 

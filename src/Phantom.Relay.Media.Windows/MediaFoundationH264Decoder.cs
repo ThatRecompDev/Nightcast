@@ -34,8 +34,12 @@ namespace Phantom.Relay.Media.Windows;
 /// Live test on the owner's RTX 4090 over 30 synthetic 2560 x 1440 access units: decode 1.2 ms average, 0.7 ms worst
 /// after the first (the first, 25 ms, allocates the decoder's surfaces once); read-back 4.2 ms average, 6.7 ms worst.
 /// So about 5.5 ms a picture in all against openh264's 8.1, and a worst case near 7 ms against 41.5: no picture is a
-/// frame late any more. A later step that hands the decoder's texture straight to the renderer would remove the
-/// read-back too. (The synthetic stream is easier than a game's, so the software path's times there are low.)</para>
+/// frame late any more. (The synthetic stream is easier than a game's, so the software path's times there are low.)</para>
+/// <para><b>Pictures left on the GPU.</b> <see cref="TryTakeSurface"/> hands the decoded surface on instead of reading
+/// it back: a <see cref="SharedSurfaceRing"/> on <see cref="Device"/> copies it into a texture the renderer's device
+/// opens, with no CPU copy at all. Opened with the renderer's <see cref="AdapterLuid"/>, the device sits on the
+/// renderer's GPU. Measured by the Live test on the owner's RTX 4090: the hand-off (the wait for the renderer, the copy
+/// and the fence, queued) costs 0.3 ms of CPU a picture against the read-back's 4.2.</para>
 /// <para><b>Fallback.</b> When the DXVA path does not start (no D3D11 video device, a decoder that is not D3D11-aware, a
 /// media type the GPU refuses), the same decoder is made again in software mode, and <see cref="FallbackReason"/> says
 /// why; <see cref="IsHardwareAccelerated"/> tells the two apart.</para>
@@ -72,16 +76,21 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
     private long _pictureTime;
     private VideoColourSpace? _space;
     private VideoRange _range;
+    private nint _surface;
+    private uint _surfaceSlice;
     private bool _disposed;
 
-    private MediaFoundationH264Decoder(ComWrappers wrappers, TimeProvider time, nint transform, MediaFoundationSampleBuffer input, D3D11VideoDevice? device)
+    private MediaFoundationH264Decoder(ComWrappers wrappers, TimeProvider time, nint transform, MediaFoundationSampleBuffer input, D3D11VideoDevice? device, long adapterLuid)
     {
         _wrappers = wrappers;
         _time = time;
         _transform = transform;
         _transformApi = ComObjects.Wrap<IMFTransform>(wrappers, transform);
         _input = input;
+
+        // The GPU's device when DXVA decodes, and the adapter it was asked for.
         _device = device;
+        AdapterLuid = adapterLuid;
     }
 
     public string CodecId => AvcCodecId;
@@ -103,11 +112,35 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
     /// <summary>How long the last <see cref="TakePicture(VideoFrame, out long)"/> took to read the picture back and split it.</summary>
     public TimeSpan LastCopyDuration { get; private set; }
 
+    /// <summary>The LUID of the adapter the GPU decodes on, as it was asked for; 0 for the system's default adapter or software.</summary>
+    public long AdapterLuid { get; }
+
+    /// <summary>The D3D11 device DXVA decodes on (an ID3D11Device, borrowed: the decoder's own reference); 0 in software.</summary>
+    public nint Device => _device?.Device ?? 0;
+
+    /// <summary>The last picture's visible width.</summary>
+    public int PictureWidth => _format.Width;
+
+    /// <summary>The last picture's visible height.</summary>
+    public int PictureHeight => _format.Height;
+
+    /// <summary>The colour the last picture is drawn with: its stream's, as its sequence parameter set says, else BT.709 limited.</summary>
+    public VideoColour PictureColour => H264StreamColour.Settle(_space, _range);
+
     /// <summary>
     /// A decoder on the GPU when <paramref name="preferHardware"/> and DXVA starts, else in software (with
     /// <see cref="FallbackReason"/>); null and why when Media Foundation's H.264 decoder cannot be made at all.
     /// </summary>
     public static MediaFoundationH264Decoder? TryOpen(TimeProvider time, bool preferHardware, out string? problem)
+    {
+        return TryOpen(time, preferHardware, 0, out problem);
+    }
+
+    /// <summary>
+    /// As <see cref="TryOpen(TimeProvider, bool, out string?)"/>, the GPU's device on the adapter of
+    /// <paramref name="adapterLuid"/> (the renderer's, so its pictures can be shared with it; 0 for the default adapter).
+    /// </summary>
+    public static MediaFoundationH264Decoder? TryOpen(TimeProvider time, bool preferHardware, long adapterLuid, out string? problem)
     {
         ArgumentNullException.ThrowIfNull(time);
 
@@ -115,7 +148,7 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
 
         if (preferHardware)
         {
-            var hardware = TryCreate(time, hardware: true, out fallback);
+            var hardware = TryCreate(time, hardware: true, adapterLuid, out fallback);
 
             if (hardware is not null)
             {
@@ -125,7 +158,7 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
             }
         }
 
-        var software = TryCreate(time, hardware: false, out problem);
+        var software = TryCreate(time, hardware: false, 0, out problem);
 
         if (software is not null)
         {
@@ -206,6 +239,30 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
         return TakePicture(target, out _);
     }
 
+    /// <summary>
+    /// The picture the last decode gave, left on the GPU: slice <paramref name="slice"/> of the decoder's texture array
+    /// <paramref name="texture"/> (an ID3D11Texture2D on <see cref="Device"/>, borrowed), valid until the next decode, its
+    /// visible size <see cref="PictureWidth"/> x <see cref="PictureHeight"/>. False when there is none, or in software.
+    /// Either this or <see cref="TakePicture(VideoFrame, out long)"/> takes a picture, not both.
+    /// </summary>
+    [HotPath]
+    public bool TryTakeSurface(out nint texture, out uint slice)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        texture = _surface;
+        slice = _surfaceSlice;
+
+        if (!_ready || !_providesSamples || _surface == 0)
+        {
+            return false;
+        }
+
+        _ready = false;
+
+        return true;
+    }
+
     /// <summary>Forgets the stream, for a seek or a lost packet: the next access unit must be a key frame.</summary>
     public void Flush()
     {
@@ -213,6 +270,7 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
 
         _ = _transformApi.ProcessMessage(MediaFoundationValues.CommandFlush, 0);
         _ready = false;
+        ComObjects.Release(ref _surface);
     }
 
     public void Dispose()
@@ -225,6 +283,8 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
         _disposed = true;
 
         // The decoder first, which holds the device manager, then what it read and wrote, then Media Foundation.
+        ComObjects.Release(ref _surface);
+
         ComObjects.Free(_transformApi);
         ComObjects.Release(ref _transform);
         _input.Dispose();
@@ -234,7 +294,7 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
     }
 
     // One decoder of either kind, set up; null and why when any step fails.
-    private static MediaFoundationH264Decoder? TryCreate(TimeProvider time, bool hardware, out string? problem)
+    private static MediaFoundationH264Decoder? TryCreate(TimeProvider time, bool hardware, long adapterLuid, out string? problem)
     {
         var result = MediaFoundationTransforms.Start();
 
@@ -246,7 +306,7 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
         }
 
         var wrappers = new StrategyBasedComWrappers();
-        var decoder = TryAssemble(wrappers, time, hardware, out problem);
+        var decoder = TryAssemble(wrappers, time, hardware, adapterLuid, out problem);
 
         if (decoder is null)
         {
@@ -266,13 +326,13 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
     }
 
     // The transform, the input sample and (for hardware) the device, before any of them is configured.
-    private static MediaFoundationH264Decoder? TryAssemble(ComWrappers wrappers, TimeProvider time, bool hardware, out string? problem)
+    private static MediaFoundationH264Decoder? TryAssemble(ComWrappers wrappers, TimeProvider time, bool hardware, long adapterLuid, out string? problem)
     {
         D3D11VideoDevice? device = null;
 
         if (hardware)
         {
-            device = D3D11VideoDevice.TryCreate(wrappers, out problem);
+            device = D3D11VideoDevice.TryCreate(wrappers, adapterLuid, out problem);
 
             if (device is null)
             {
@@ -294,7 +354,12 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
             return null;
         }
 
-        return new MediaFoundationH264Decoder(wrappers, time, transform, input, device);
+        if (device is null)
+        {
+            adapterLuid = 0;
+        }
+
+        return new MediaFoundationH264Decoder(wrappers, time, transform, input, device, adapterLuid);
     }
 
     // Low latency, the device, the input and output types, then streaming.
@@ -580,14 +645,15 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
         ComObjects.Free(surfaceApi);
         ComObjects.Release(ref surface);
 
-        var copied = !ComObjects.Failed(result) && _device!.TryCopy(texture, slice);
-        ComObjects.Release(ref texture);
-
-        if (!copied)
+        if (ComObjects.Failed(result))
         {
             return Fail(DecoderStep.Surface, result);
         }
 
+        // The surface stays the picture's until the next one: read back (TakePicture) or handed on (TryTakeSurface).
+        ComObjects.Release(ref _surface);
+        _surface = texture;
+        _surfaceSlice = slice;
         _ready = true;
 
         return VideoDecodeResult.Picture;
@@ -598,7 +664,7 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
     {
         if (_providesSamples)
         {
-            return _device!.TryRead(_format.Width, _format.Height, target);
+            return _device!.TryCopy(_surface, _surfaceSlice) && _device.TryRead(_format.Width, _format.Height, target);
         }
 
         return _output!.TryCopyNv12(_format, target);

@@ -39,25 +39,17 @@ internal sealed unsafe class D3D11VideoDevice : IDisposable
     /// <summary>The device manager to hand the decoder (MFT_MESSAGE_SET_D3D_MANAGER).</summary>
     public nint Manager => _manager;
 
-    /// <summary>A hardware device with video support, made thread-safe and put in a device manager; null and why when not.</summary>
-    public static D3D11VideoDevice? TryCreate(ComWrappers wrappers, out string? problem)
+    /// <summary>The ID3D11Device, borrowed: the device's own reference.</summary>
+    public nint Device => _device;
+
+    /// <summary>
+    /// A hardware device with video support, made thread-safe and put in a device manager, on the adapter of
+    /// <paramref name="adapterLuid"/> (0: the system's default adapter); null and why when not.
+    /// </summary>
+    public static D3D11VideoDevice? TryCreate(ComWrappers wrappers, long adapterLuid, out string? problem)
     {
-        var result = NativeMethods.D3D11CreateDevice(
-            0,
-            MediaFoundationValues.HardwareDriver,
-            0,
-            MediaFoundationValues.VideoSupport,
-            0,
-            0,
-            MediaFoundationValues.D3D11SdkVersion,
-            out var device,
-            out _,
-            out var context);
-
-        if (ComObjects.Failed(result))
+        if (!TryCreateDevice(adapterLuid, out var device, out var context, out problem))
         {
-            problem = $"D3D11CreateDevice with video support failed (0x{result:X8})";
-
             return null;
         }
 
@@ -129,6 +121,39 @@ internal sealed unsafe class D3D11VideoDevice : IDisposable
         ComObjects.Release(ref _manager);
         ComObjects.Release(ref _context);
         ComObjects.Release(ref _device);
+    }
+
+    // The device on the given adapter (with the driver it names), or on the default hardware adapter for LUID 0.
+    private static bool TryCreateDevice(long adapterLuid, out nint device, out nint context, out string? problem)
+    {
+        device = 0;
+        context = 0;
+        problem = null;
+        nint adapter = 0;
+        var driver = MediaFoundationValues.HardwareDriver;
+
+        if (adapterLuid != 0)
+        {
+            adapter = DxgiAdapters.Find(adapterLuid, out problem);
+            driver = Direct3D11Values.UnknownDriver;
+        }
+
+        if (adapterLuid != 0 && adapter == 0)
+        {
+            return false;
+        }
+
+        var result = NativeMethods.D3D11CreateDevice(adapter, driver, 0, MediaFoundationValues.VideoSupport, 0, 0, MediaFoundationValues.D3D11SdkVersion, out device, out _, out context);
+        ComObjects.Release(ref adapter);
+
+        if (ComObjects.Failed(result))
+        {
+            problem = $"D3D11CreateDevice with video support failed (0x{result:X8})";
+
+            return false;
+        }
+
+        return true;
     }
 
     // DXVA under Media Foundation needs the immediate context guarded, the decoder using it from its own threads.
