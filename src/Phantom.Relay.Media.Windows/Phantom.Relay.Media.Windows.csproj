@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Windows hardware H.264 decoder behind Phantom.Engine's IVideoDecoder port. Its bitstream and picture
+       helpers (Annex-B units, the SPS's colour, NV12 to planes) are game-agnostic and engine candidates. -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Core" />
+    <PackageReference Include="Phantom.Engine.Media" />
+  </ItemGroup>
+
+</Project>

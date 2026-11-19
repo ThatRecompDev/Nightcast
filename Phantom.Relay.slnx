@@ -5,6 +5,7 @@
     <Project Path="src/Phantom.Relay.Desktop/Phantom.Relay.Desktop.csproj" />
     <Project Path="src/Phantom.Relay.Http.Bcl/Phantom.Relay.Http.Bcl.csproj" />
     <Project Path="src/Phantom.Relay.Pads.Windows/Phantom.Relay.Pads.Windows.csproj" />
+    <Project Path="src/Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
     <Project Path="src/Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
     <Project Path="src/Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
     <Project Path="src/Phantom.Relay.Tools.Probe/Phantom.Relay.Tools.Probe.csproj" />
@@ -17,6 +18,7 @@
     <Project Path="tests/Phantom.Relay.Audio.Tests/Phantom.Relay.Audio.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Http.Bcl.Tests/Phantom.Relay.Http.Bcl.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Pads.Windows.Tests/Phantom.Relay.Pads.Windows.Tests.csproj" />
+    <Project Path="tests/Phantom.Relay.Media.Windows.Tests/Phantom.Relay.Media.Windows.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Profiles.Tests/Phantom.Relay.Profiles.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Stream.Tests/Phantom.Relay.Stream.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Tools.Probe.Tests/Phantom.Relay.Tools.Probe.Tests.csproj" />
