@@ -25,7 +25,7 @@ public sealed class ComposingApplication : IApplication
 
     public void Frame(double seconds, InputFrame input)
     {
-        Composed = _composer.Compose(input);
+        Composed = _composer.Compose(input, (float)seconds);
     }
 
     public void DeviceLost()

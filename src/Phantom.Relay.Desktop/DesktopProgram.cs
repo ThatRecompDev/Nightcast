@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging.Abstractions;
+using Phantom.Engine.Audio.Codecs.Opus;
+using Phantom.Engine.Audio.Sokol;
 using Phantom.Engine.Content.Storage;
 using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Graphics.Sokol;
@@ -14,8 +17,12 @@ using Phantom.Engine.Platform.Desktop.Gamepads;
 using Phantom.Engine.Platform.Desktop.Storage;
 using Phantom.Relay.App;
 using Phantom.Relay.App.Input;
+using Phantom.Relay.App.Sound;
+using Phantom.Relay.Audio;
 using Phantom.Relay.Http.Bcl;
+using Phantom.Relay.Pads.Windows;
 using Phantom.Relay.Profiles;
+using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Network;
@@ -102,7 +109,7 @@ public static class DesktopProgram
         }
     }
 
-    /// <summary>Streams the console in the window until it closes, then stops the stream.</summary>
+    /// <summary>Streams the console in the window until it closes, then stops the stream, the sound and the pads.</summary>
     private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, TimeProvider clock)
     {
         uint? hostAddress = LocalAddress.Find();
@@ -115,38 +122,76 @@ public static class DesktopProgram
             return Refused;
         }
 
+        // The sound: the console's Opus through the jitter buffer into the system's output.
+        using var speakers = new SokolAudioDevice(NullLogger<SokolAudioDevice>.Instance);
+        var player = new OpusStreamPlayer(new EngineOpusFrameDecoder(new OpusDecoder(OpusStreamFormat.Channels)), clock, OpusStreamFormat.SampleRate, PlayoutSettings.Default);
+        IStreamAudioSink sound = StartSound(speakers, player);
+
         // A UDP socket on any address and a free port, for ICE and everything after it.
         using var transport = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
-        using var connection = new StreamConnection(sessions, transport, hostAddress.Value, decoder, new SilentAudioSink(), profiles, clock, random, NullLogger<StreamConnection>.Instance);
+        using var connection = new StreamConnection(sessions, transport, hostAddress.Value, decoder, sound, profiles, clock, random, NullLogger<StreamConnection>.Instance);
         Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}. F3 shows the stats; Escape ends.");
         connection.Start(console.ServerId, settings);
 
-        RunWindow(connection);
+        RunWindow(connection, ProfileChoice.For(profiles, null));
         connection.Stop();
+        speakers.Stop();
 
         return Outcome(connection.Stats);
     }
 
-    /// <summary>The window on this thread until it closes: the stream drawn, the pads read through XInput.</summary>
-    private static void RunWindow(StreamConnection connection)
+    /// <summary>The sink the stream's sound goes to: the player when the system's output opened, silence when not.</summary>
+    private static IStreamAudioSink StartSound(SokolAudioDevice speakers, OpusStreamPlayer player)
     {
-        var window = new SokolWindowHost();
-        var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
-        var application = new StreamApplication(device, window, connection, new DirectPadComposer());
-        var driver = new ApplicationDriver(application, new InputFrame(InputLimits.Default), Pads());
+        if (!speakers.Open(OpusStreamPlayer.DeviceRequest))
+        {
+            Console.WriteLine("No sound output: the stream plays without sound.");
 
-        SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);
+            return new SilentAudioSink();
+        }
+
+        speakers.Start(player);
+
+        return new PlayerAudioSink(player);
     }
 
-    private static IGamepadSource Pads()
+    /// <summary>
+    /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
+    /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
+    /// </summary>
+    private static void RunWindow(StreamConnection connection, StreamProfile profile)
     {
         if (OperatingSystem.IsWindows())
         {
-            return new XInputGamepads();
+            RunWindowWithWindowsPads(connection, profile);
+
+            return;
         }
 
-        return new NoGamepads();
+        Run(connection, profile, new NoGamepads());
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile)
+    {
+        using var playStation = new PlayStationPads();
+        playStation.Start();
+
+        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads));
+        playStation.Stop();
+    }
+
+    /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame.</summary>
+    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads)
+    {
+        var window = new SokolWindowHost();
+        var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
+        var reports = new PadReportPolicy(PadReportSettings.Standard);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports);
+        var driver = new ApplicationDriver(application, new InputFrame(InputLimits.Default), pads);
+
+        SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);
     }
 
     private static string Refusal(uint? hostAddress, string? problem)

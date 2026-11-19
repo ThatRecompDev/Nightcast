@@ -11,6 +11,8 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.Audio/Phantom.Relay.Audio.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
     <ProjectReference Include="../Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
   </ItemGroup>
 

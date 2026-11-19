@@ -7,9 +7,9 @@ using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Media.Rendering;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Stats;
+using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
-using Phantom.Relay.Xbox.Input;
 
 namespace Phantom.Relay.App;
 
@@ -29,19 +29,20 @@ public sealed class StreamApplication : IApplication
     private readonly IWindow _window;
     private readonly StreamConnection _stream;
     private readonly IPadComposer _pads;
+    private readonly PadReportPolicy _reports;
     private readonly MovieRenderer _renderer;
 
-    private XboxPadState _sentPad;
-    private bool _padSent;
+    private TimeSpan _now;
     private bool _showStats;
     private StreamStats? _shownStats;
 
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads)
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports)
     {
         _device = device;
         _window = window;
         _stream = stream;
         _pads = pads;
+        _reports = reports;
         _renderer = new MovieRenderer(device);
     }
 
@@ -54,7 +55,7 @@ public sealed class StreamApplication : IApplication
     public void Frame(double seconds, InputFrame input)
     {
         HandleKeys(input);
-        SendPad(input);
+        SendPad(input, seconds);
 
         // Draw the newest picture, letterboxed to 16:9.
         _stream.Pictures.TryTake();
@@ -107,18 +108,16 @@ public sealed class StreamApplication : IApplication
         }
     }
 
-    private void SendPad(InputFrame input)
+    /// <summary>A change goes out at once; an unchanged pad is repeated at the policy's keep-alive; focus loss rests it.</summary>
+    private void SendPad(InputFrame input, double seconds)
     {
-        var pad = _pads.Compose(input);
+        _now += TimeSpan.FromSeconds(seconds);
+        var pad = _pads.Compose(input, (float)seconds);
 
-        if (_padSent && pad == _sentPad)
+        if (_reports.ShouldSend(in pad, input.Focused, _now, out var report))
         {
-            return;
+            _stream.SendPad(FirstPad, in report);
         }
-
-        _stream.SendPad(FirstPad, in pad);
-        _sentPad = pad;
-        _padSent = true;
     }
 
     /// <summary>The title changes only with a new snapshot (once a second at most) or the F3 toggle.</summary>
