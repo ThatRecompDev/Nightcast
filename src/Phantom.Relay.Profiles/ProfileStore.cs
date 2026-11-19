@@ -2,6 +2,7 @@
 
 using System.Text.Json;
 using Phantom.Engine.Content.Storage;
+using Phantom.Relay.Profiles.KeyboardMouse;
 
 namespace Phantom.Relay.Profiles;
 
@@ -81,6 +82,12 @@ public sealed class ProfileStore
         if (profile is null)
         {
             throw new JsonException("a stored profile was empty");
+        }
+
+        // A profile saved before keyboard and mouse existed has none: it plays with the pad alone.
+        if (profile.KeyboardMouse is null)
+        {
+            return profile with { KeyboardMouse = KeyboardMouseSettings.Off };
         }
 
         return profile;

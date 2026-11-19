@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="Phantom.Engine.Content" />
+    <PackageReference Include="Phantom.Engine.Hosting" />
   </ItemGroup>
 
   <ItemGroup>
