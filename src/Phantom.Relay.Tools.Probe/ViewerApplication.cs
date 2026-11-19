@@ -16,9 +16,7 @@ namespace Phantom.Relay.Tools.Probe;
 /// </summary>
 public sealed class ViewerApplication : IApplication
 {
-    private const float StreamAspect = 16f / 9f;
     private const string Title = "Phantom.Relay";
-    private const float Half = 0.5f;
 
     private static readonly Vector4 Black = new(0f, 0f, 0f, 1f);
     private static readonly TimeSpan TitleInterval = TimeSpan.FromSeconds(1);
@@ -60,7 +58,7 @@ public sealed class ViewerApplication : IApplication
         if (_mailbox.HasPicture)
         {
             _renderer.Upload(_mailbox.Front);
-            _renderer.Draw(Letterbox());
+            _renderer.Draw(PictureLetterbox.Of(_window.Width, _window.Height));
         }
 
         _device.EndPass();
@@ -79,23 +77,6 @@ public sealed class ViewerApplication : IApplication
     public void Cleanup()
     {
         _renderer.Cleanup();
-    }
-
-    /// <summary>The 16:9 rectangle centred in the window, as fractions of it (x, y, width, height).</summary>
-    private Vector4 Letterbox()
-    {
-        float aspect = (float)_window.Width / Math.Max(1, _window.Height);
-
-        if (aspect > StreamAspect)
-        {
-            float width = StreamAspect / aspect;
-
-            return new Vector4((1f - width) * Half, 0f, width, 1f);
-        }
-
-        float height = aspect / StreamAspect;
-
-        return new Vector4(0f, (1f - height) * Half, 1f, height);
     }
 
     private void ShowRate(double seconds)

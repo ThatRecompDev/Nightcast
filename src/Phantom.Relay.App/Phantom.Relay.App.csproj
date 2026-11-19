@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Graphics" />
+    <PackageReference Include="Phantom.Engine.Hosting" />
+    <PackageReference Include="Phantom.Engine.Media" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
+  </ItemGroup>
+
+</Project>

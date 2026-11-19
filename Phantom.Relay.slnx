@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Phantom.Relay.Audio/Phantom.Relay.Audio.csproj" />
+    <Project Path="src/Phantom.Relay.App/Phantom.Relay.App.csproj" />
     <Project Path="src/Phantom.Relay.Http.Bcl/Phantom.Relay.Http.Bcl.csproj" />
     <Project Path="src/Phantom.Relay.Pads.Windows/Phantom.Relay.Pads.Windows.csproj" />
     <Project Path="src/Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
@@ -10,6 +11,7 @@
     <Project Path="src/Phantom.Relay.Xbox/Phantom.Relay.Xbox.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Phantom.Relay.App.Tests/Phantom.Relay.App.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Architecture.Tests/Phantom.Relay.Architecture.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Audio.Tests/Phantom.Relay.Audio.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Http.Bcl.Tests/Phantom.Relay.Http.Bcl.Tests.csproj" />
