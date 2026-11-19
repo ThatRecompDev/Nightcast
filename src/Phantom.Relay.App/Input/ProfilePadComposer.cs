@@ -11,7 +11,7 @@ namespace Phantom.Relay.App.Input;
 /// <summary>The app's pad: the profile's <see cref="PadComposer"/> (the pad by place, its shaping, keyboard and mouse).</summary>
 public sealed class ProfilePadComposer : IPadComposer
 {
-    private readonly PadComposer _composer;
+    private PadComposer _composer;
 
     public ProfilePadComposer(StreamProfile profile)
     {
@@ -22,5 +22,10 @@ public sealed class ProfilePadComposer : IPadComposer
     public XboxPadState Compose(InputFrame input, float elapsedSeconds)
     {
         return _composer.Compose(input, elapsedSeconds);
+    }
+
+    public void Use(StreamProfile profile)
+    {
+        _composer = new PadComposer(profile);
     }
 }

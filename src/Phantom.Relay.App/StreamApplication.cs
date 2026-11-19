@@ -7,6 +7,7 @@ using Phantom.Engine.Hosting.Input;
 using Phantom.Engine.Media.Rendering;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Stats;
+using Phantom.Relay.Profiles;
 using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
@@ -16,8 +17,11 @@ namespace Phantom.Relay.App;
 /// <summary>
 /// The stream on screen. Every frame it gathers the frame's input into pad 0 (<see cref="IPadComposer"/>) and sends it
 /// the moment it changes, then draws the newest decoded picture letterboxed at 16:9 with the engine's picture renderer
-/// (YCbCr to RGB on the GPU). F3 shows the stats in the window's title, rebuilt only when a new snapshot arrives.
-/// Escape closes the window; closing it stops the stream, and with it the session on the console.
+/// (YCbCr to RGB on the GPU). It plays under the running game's profile, switching when the console names another
+/// title; a keyboard and mouse profile locks the mouse to the window while it has the focus (F10 frees or takes it).
+/// F3 shows the stats in the window's title, rebuilt only when a new snapshot arrives. Escape closes the window, except
+/// while keyboard and mouse play, when it is the game's and Shift+Escape closes it; closing it stops the stream, and
+/// with it the session on the console.
 /// </summary>
 public sealed class StreamApplication : IApplication
 {
@@ -35,6 +39,8 @@ public sealed class StreamApplication : IApplication
     private TimeSpan _now;
     private bool _showStats;
     private StreamStats? _shownStats;
+    private StreamProfile? _profile;
+    private bool _captureMouse;
 
     public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports)
     {
@@ -54,7 +60,9 @@ public sealed class StreamApplication : IApplication
 
     public void Frame(double seconds, InputFrame input)
     {
+        FollowProfile();
         HandleKeys(input);
+        CaptureMouse(input);
         SendPad(input, seconds);
 
         // Draw the newest picture, letterboxed to 16:9.
@@ -98,14 +106,64 @@ public sealed class StreamApplication : IApplication
 
             if (inputEvent.Key == Key.Escape)
             {
-                _window.Quit();
+                QuitUnlessPlayed(input);
             }
             else if (inputEvent.Key == Key.F3)
             {
                 _showStats = !_showStats;
                 _shownStats = null;
             }
+            else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
+            {
+                _captureMouse = !_captureMouse;
+            }
         }
+    }
+
+    /// <summary>
+    /// Escape ends the stream, except while keyboard and mouse play: then it is the game's (its pause menu), and
+    /// Shift+Escape ends the stream.
+    /// </summary>
+    private void QuitUnlessPlayed(InputFrame input)
+    {
+        bool shifted = input.IsKeyDown(Key.LeftShift) || input.IsKeyDown(Key.RightShift);
+
+        if (shifted || !KeyboardMousePlays())
+        {
+            _window.Quit();
+        }
+    }
+
+    /// <summary>A new title's profile plays from this frame on; a keyboard and mouse profile takes the mouse.</summary>
+    private void FollowProfile()
+    {
+        var profile = _stream.Profile;
+
+        if (ReferenceEquals(profile, _profile))
+        {
+            return;
+        }
+
+        _profile = profile;
+        _pads.Use(profile);
+        _reports.Reset();
+        _captureMouse = KeyboardMousePlays();
+    }
+
+    /// <summary>The mouse is locked to the window while it is captured and the window has the focus (F10 toggles it).</summary>
+    private void CaptureMouse(InputFrame input)
+    {
+        bool lockIt = _captureMouse && input.Focused;
+
+        if (lockIt != _window.MouseLocked)
+        {
+            _window.LockMouse(lockIt);
+        }
+    }
+
+    private bool KeyboardMousePlays()
+    {
+        return _profile is not null && _profile.KeyboardMouse.Enabled;
     }
 
     /// <summary>A change goes out at once; an unchanged pad is repeated at the policy's keep-alive; focus loss rests it.</summary>

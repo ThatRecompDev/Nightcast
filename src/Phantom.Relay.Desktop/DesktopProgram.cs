@@ -85,7 +85,7 @@ public static class DesktopProgram
             return NoConsole;
         }
 
-        var profiles = new ProfileStore(store).LoadAll();
+        var profiles = BuiltInProfiles.With(new ProfileStore(store).LoadAll());
         var settings = SessionSettings.For(ProfileChoice.For(profiles, null).Stream.Resolution, clock);
 
         return StreamConsole(sessions, console, profiles, settings, clock);

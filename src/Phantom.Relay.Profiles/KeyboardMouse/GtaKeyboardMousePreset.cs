@@ -86,12 +86,16 @@ public static class GtaKeyboardMousePreset
         WheelSettings.None);
 
     /// <summary>
-    /// The profile, with the default stream settings. It names no title: the app adds the game's title id when the
-    /// player picks it (<c>Profile with { TitleIds = [id] }</c>), as a profile without one is the default profile.
+    /// GTA VI's title id as the console names it in /streaming/properties/titleinfo: seen when the owner started the
+    /// game during a live stream, 2026-11-19.
     /// </summary>
+    public const string GtaSixTitleId = "7952987a";
+
+    /// <summary>The profile, with the default stream settings, chosen whenever the console runs GTA VI.</summary>
     public static StreamProfile Profile { get; } = StreamProfile.Default with
     {
         Name = ProfileName,
+        TitleIds = [GtaSixTitleId],
         KeyboardMouse = Settings,
     };
 }
