@@ -26,6 +26,9 @@ public static partial class StreamLog
     [LoggerMessage(Level = LogLevel.Information, Message = "Latest access units, bytes: {Sizes}")]
     public static partial void UnitSizes(this ILogger log, string sizes);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Bitrate feedback offered: {Offered}; the answer kept: {Kept}")]
+    public static partial void BitrateFeedback(this ILogger log, string offered, string kept);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Stopping the session failed: {Reason}")]
     public static partial void StopRefused(this ILogger log, string reason);
 }

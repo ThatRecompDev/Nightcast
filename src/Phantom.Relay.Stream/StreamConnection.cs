@@ -6,6 +6,7 @@ using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Media.Video;
 using Phantom.Engine.Net.Transport;
 using Phantom.Relay.Profiles;
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.Stream.Logging;
@@ -21,7 +22,7 @@ using Phantom.Relay.Xbox.Session;
 namespace Phantom.Relay.Stream;
 
 /// <summary>
-/// One streaming session from start to stop. <see cref="Start"/> starts the session through the streaming service,
+/// One streaming session from start to stop. <see cref="Start(string, StreamSettings, BitrateFeedback)"/> starts the session through the streaming service,
 /// sends the offer, runs ICE, DTLS, SCTP and the data channels, and receives the media; <see cref="Stop"/> stops the
 /// session on the console. All of it runs on one network thread this class owns, which never sleeps on a timer (a
 /// Windows timer tick is ~15.6 ms of latency). While streaming it waits for the next datagram where the transport
@@ -65,6 +66,7 @@ public sealed class StreamConnection : IDisposable
     private readonly StreamStatsMeter _meter;
 
     private Thread? _thread;
+    private BitrateFeedback _feedback = BitrateFeedback.Off;
     private StreamStats _stats = StreamStats.Idle;
     private StreamProfile _profile;
 
@@ -114,11 +116,20 @@ public sealed class StreamConnection : IDisposable
     /// <summary>Starts the session on <paramref name="serverId"/> on the network thread and returns at once.</summary>
     public void Start(string serverId, StreamSettings settings)
     {
+        Start(serverId, settings, BitrateFeedback.Off);
+    }
+
+    /// <summary>Starts the session as <see cref="Start(string, StreamSettings)"/>, offering and sending the bitrate <paramref name="feedback"/>.</summary>
+    public void Start(string serverId, StreamSettings settings, BitrateFeedback feedback)
+    {
+        ArgumentNullException.ThrowIfNull(feedback);
+
         if (_thread is not null)
         {
             throw new InvalidOperationException("A connection streams once.");
         }
 
+        _feedback = feedback;
         Publish(Stats with { State = StreamState.Starting });
         _thread = new Thread(() => Run(serverId, settings)) { IsBackground = true, Name = "Relay stream network" };
         _thread.Start();
@@ -192,14 +203,15 @@ public sealed class StreamConnection : IDisposable
         var local = IceCredentials.Create(_random);
         var certificate = DtlsCertificate.Create(new SecureRandom(), _clock.GetUtcNow());
         Publish(Stats with { State = StreamState.Negotiating });
-        string answer = Wait(_sessions.ExchangeSdpAsync(session, StreamOffer.Create(local, certificate.Fingerprint, _random), _stop.Token));
+        string answer = Wait(_sessions.ExchangeSdpAsync(session, StreamOffer.Create(local, certificate.Fingerprint, _random, _feedback), _stop.Token));
 
         if (SessionIce.ReadCredentials(answer) is null)
         {
             return "the console's answer carries no ICE credentials";
         }
 
-        using var link = new ConsoleLink(_transport, local, video, _audio, _pads, _clock, _random);
+        LogFeedback(answer);
+        using var link = new ConsoleLink(_transport, local, video, _audio, _pads, _clock, _random, _feedback);
         var exchanged = Wait(_sessions.ExchangeIceAsync(session, [link.HostCandidate(_hostAddress)], _stop.Token));
         link.StartIce(answer, exchanged);
         Publish(Stats with { State = StreamState.Connecting });
@@ -214,6 +226,15 @@ public sealed class StreamConnection : IDisposable
         Publish(Stats with { State = StreamState.Streaming, IceRoundTrip = link.Ice.RoundTrip, DtlsTime = link.DtlsElapsed });
 
         return Receive(session, link, video);
+    }
+
+    /// <summary>The bitrate feedback offered and what of it the console's answer kept, for the live comparisons.</summary>
+    private void LogFeedback(string answer)
+    {
+        if (_log.IsEnabled(LogLevel.Information))
+        {
+            _log.BitrateFeedback(_feedback.Describe(), AnswerFeedback.Of(answer).Describe());
+        }
     }
 
     /// <summary>ICE, then DTLS, each within its deadline; returns why it failed, or null (also when stopped).</summary>
@@ -377,7 +398,9 @@ public sealed class StreamConnection : IDisposable
             media?.KeyframeRequests ?? 0,
             reports,
             video.Width,
-            video.Height);
+            video.Height,
+            media?.VideoBytes ?? 0,
+            media?.AudioBytes ?? 0);
 
         var stats = _meter.Measure(Stats, in counters) with { IceRoundTrip = link.Ice.RoundTrip };
         Publish(stats);

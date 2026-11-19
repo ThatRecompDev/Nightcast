@@ -3,12 +3,15 @@
 namespace Phantom.Relay.Stream;
 
 /// <summary>
-/// Turns the stream's running totals into a snapshot's rates: frames received and decoded per second and the average
-/// decode since the last reading, the totals as they are. The first reading has nothing to compare with, so its rates
+/// Turns the stream's running totals into a snapshot's rates: frames received and decoded per second, the average
+/// decode and the video and sound bitrates since the last reading, the totals as they are. The first reading has nothing to compare with, so its rates
 /// are zero.
 /// </summary>
 public sealed class StreamStatsMeter
 {
+    private const double BitsPerByte = 8;
+    private const double BitsPerMegabit = 1_000_000;
+
     private readonly TimeProvider _clock;
 
     private StreamCounters _last;
@@ -46,6 +49,8 @@ public sealed class StreamStatsMeter
                 RepeatedPicturesPerSecond = (counters.RepeatedPictures - _last.RepeatedPictures) / seconds,
                 DecodeAverage = Average(counters.DecodeTotal - _last.DecodeTotal, counters),
                 HandOffAverage = Average(counters.HandOffTotal - _last.HandOffTotal, counters),
+                VideoMegabitsPerSecond = Megabits(counters.VideoBytes - _last.VideoBytes, seconds),
+                AudioMegabitsPerSecond = Megabits(counters.AudioBytes - _last.AudioBytes, seconds),
             };
         }
 
@@ -54,6 +59,17 @@ public sealed class StreamStatsMeter
         _lastAt = now;
 
         return next;
+    }
+
+    /// <summary>Octets received over <paramref name="seconds"/>, in Mbit/s.</summary>
+    public static double Megabits(long bytes, double seconds)
+    {
+        if (seconds <= 0)
+        {
+            return 0;
+        }
+
+        return bytes * BitsPerByte / BitsPerMegabit / seconds;
     }
 
     // A time spent since the last reading, per unit decoded since.

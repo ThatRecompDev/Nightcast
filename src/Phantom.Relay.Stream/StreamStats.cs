@@ -9,7 +9,8 @@ namespace Phantom.Relay.Stream;
 /// the render thread reads it whole without a lock: the state (and why it failed), the running title, the path's
 /// round trip, how long DTLS took, the frames received and decoded per second (and of them the new pictures and the
 /// repeats), the decode time per frame (average and
-/// worst over the last second), and the packets lost, keyframe requests and input reports sent so far.
+/// worst over the last second), the video and sound bitrates over the last second, and the packets lost, keyframe
+/// requests and input reports sent so far.
 /// </summary>
 public sealed record StreamStats
 {
@@ -57,6 +58,12 @@ public sealed record StreamStats
     public long KeyframeRequests { get; init; }
 
     public long InputReportsSent { get; init; }
+
+    /// <summary>The video received over the last second, in Mbit/s of RTP payload.</summary>
+    public double VideoMegabitsPerSecond { get; init; }
+
+    /// <summary>The sound received over the last second, in Mbit/s of RTP payload.</summary>
+    public double AudioMegabitsPerSecond { get; init; }
 
     /// <summary>The decoded picture's size, once one was decoded.</summary>
     public int Width { get; init; }

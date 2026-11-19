@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.H264;
@@ -13,7 +14,8 @@ namespace Phantom.Relay.Stream.Media;
 /// latency-first reorder stage into the H.264 depacketizer. Each whole access unit goes to the
 /// <see cref="DecodeWorker"/>, so this loop never waits on the decoder. After a loss, while the depacketizer waits for
 /// a keyframe, it asks the console for one with an SRTCP PLI, at most once per <see cref="KeyframeRequestInterval"/>.
-/// Each Opus payload goes to the <see cref="IStreamAudioSink"/> as it arrives.
+/// Each Opus payload goes to the <see cref="IStreamAudioSink"/> as it arrives. The <see cref="FeedbackSender"/> sends the
+/// bitrate feedback that is switched on, and the payload octets of video and sound are counted for their bitrates.
 /// </summary>
 public sealed class MediaReceiver : IAccessUnitSink
 {
@@ -41,6 +43,7 @@ public sealed class MediaReceiver : IAccessUnitSink
     private readonly IStreamAudioSink _audio;
     private readonly byte[] _scratch = new byte[MaxPacket];
     private readonly byte[] _feedback = new byte[MaxPacket];
+    private readonly FeedbackSender _bitrate;
 
     private uint _videoSsrc;
     private long _lastRequest;
@@ -51,8 +54,14 @@ public sealed class MediaReceiver : IAccessUnitSink
     private long _audioPackets;
     private long _units;
     private long _keyframes;
+    private long _videoBytes;
+    private long _audioBytes;
 
-    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, DecodeWorker video, IStreamAudioSink audio, TimeProvider clock)
+    /// <summary>
+    /// <paramref name="transportWideId"/> is the answer's id of the transport-wide sequence extension, 0 when it kept
+    /// none; <paramref name="feedback"/> says which bitrate feedback goes out.
+    /// </summary>
+    public MediaReceiver(SrtpProfile profile, byte[] keyingMaterial, IReadOnlySet<int> videoPayloads, IRtcpOutput rtcp, DecodeWorker video, IStreamAudioSink audio, TimeProvider clock, BitrateFeedback feedback, int transportWideId)
     {
         SrtpKeyingMaterial.Split(profile, keyingMaterial, localIsClient: true, out var own, out var console);
         _decrypt = SrtpContext.Create(profile, console, MaxSources);
@@ -65,6 +74,7 @@ public sealed class MediaReceiver : IAccessUnitSink
         _video = video;
         _audio = audio;
         _clock = clock;
+        _bitrate = new FeedbackSender(feedback, transportWideId, FeedbackSsrc, _protect, rtcp, clock);
     }
 
     /// <summary>Whole access units assembled (frames received).</summary>
@@ -74,6 +84,12 @@ public sealed class MediaReceiver : IAccessUnitSink
     public long Lost => _reorder.Lost;
 
     public long KeyframeRequests => Interlocked.Read(ref _requests);
+
+    /// <summary>Video RTP payload octets received so far, read on the network thread.</summary>
+    public long VideoBytes => _videoBytes;
+
+    /// <summary>Sound RTP payload octets received so far, read on the network thread.</summary>
+    public long AudioBytes => _audioBytes;
 
     /// <summary>One RTP or RTCP datagram from the console.</summary>
     public void Receive(ReadOnlySpan<byte> datagram)
@@ -103,14 +119,19 @@ public sealed class MediaReceiver : IAccessUnitSink
         }
 
         _decrypted++;
+        _bitrate.Record(packet[..length], _header);
         Route(packet[..length]);
     }
 
-    /// <summary>Lets the reorder stage give up on holes whose time has passed, and asks for a keyframe when one is needed.</summary>
+    /// <summary>
+    /// Lets the reorder stage give up on holes whose time has passed, asks for a keyframe when one is needed, and sends
+    /// the bitrate feedback that is due.
+    /// </summary>
     public void Service()
     {
         _reorder.Service();
         RequestKeyframeWhenNeeded();
+        _bitrate.Service(_videoSsrc);
     }
 
     public void Deliver(ReadOnlySpan<byte> accessUnit, uint timestamp, H264AccessUnitContent content)
@@ -129,7 +150,13 @@ public sealed class MediaReceiver : IAccessUnitSink
     /// <summary>The network side's counts, read on the network thread.</summary>
     public MediaCounts Counts()
     {
-        return new MediaCounts(_decrypted, _refused, _rtcpPackets, _audioPackets, _units, _keyframes, _depacketizer.Dropped, _reorder.Lost, _requests);
+        return new MediaCounts(_decrypted, _refused, _rtcpPackets, _audioPackets, _units, _keyframes, _depacketizer.Dropped, _reorder.Lost, _requests)
+        {
+            VideoBytes = _videoBytes,
+            AudioBytes = _audioBytes,
+            RembSent = _bitrate.RembSent,
+            TransportFeedbackSent = _bitrate.TransportFeedbackSent,
+        };
     }
 
     private void Route(ReadOnlySpan<byte> packet)
@@ -137,11 +164,13 @@ public sealed class MediaReceiver : IAccessUnitSink
         if (_videoPayloads.Contains(_header.PayloadType))
         {
             _videoSsrc = _header.Ssrc;
+            _videoBytes += _header.PayloadLength;
             _reorder.Push(packet);
         }
         else if (_header.PayloadType == StreamOffer.OpusPayload)
         {
             _audioPackets++;
+            _audioBytes += _header.PayloadLength;
             _audio.Push(_header.Payload(packet), _header.SequenceNumber, _header.Timestamp);
         }
     }

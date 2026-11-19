@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.Stream.Feedback;
+using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Tools.Probe.Tests.Fakes;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.Xbox.Session;
@@ -112,6 +114,28 @@ public sealed class ProbeRunTests : IDisposable
         Assert.DoesNotContain("gs-token", _output.ToString(), StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task The_feedback_switches_go_in_the_offer_and_the_bitrate_and_feedback_sent_are_shown()
+    {
+        _sessions.Consoles.Add(new XboxConsole("F4001", "Living room", "XboxSeriesX", "On", true));
+        var counts = new MediaCounts(1000, 0, 10, 300, 600, 2, 0, 0, 1) { VideoBytes = 17_500_000, AudioBytes = 160_000, RembSent = 10, TransportFeedbackSent = 200 };
+        _ice.Media = new MediaReport(counts, 600, 2560, 1440, TimeSpan.FromMilliseconds(1), TimeSpan.FromMilliseconds(2), 1, null)
+        {
+            VideoAverageMegabits = 14.04,
+            VideoPeakMegabits = 16.2,
+            AudioAverageMegabits = 0.128,
+        };
+
+        await Run(string.Empty, new BitrateFeedback { RembKbps = 80000, TransportWideCc = true });
+
+        Assert.Contains("a=rtcp-fb:104 goog-remb", _sessions.Offer, StringComparison.Ordinal);
+        Assert.Contains("a=rtcp-fb:104 transport-cc", _sessions.Offer, StringComparison.Ordinal);
+        Assert.Contains("(bitrate feedback: REMB 80000 kbit/s, transport-cc)", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("the answer kept of the bitrate feedback: nothing", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("bitrate: video 14.0 Mbit/s average, 16.2 peak; access unit 29166 bytes on average; sound 0.13 Mbit/s", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("feedback sent: 10 REMB, 200 transport feedback", _output.ToString(), StringComparison.Ordinal);
+    }
+
     public void Dispose()
     {
         _output.Dispose();
@@ -119,8 +143,13 @@ public sealed class ProbeRunTests : IDisposable
 
     private Task<int> Run(string input)
     {
+        return Run(input, BitrateFeedback.Off);
+    }
+
+    private Task<int> Run(string input, BitrateFeedback feedback)
+    {
         var run = new ProbeRun(_auth, _sessions, _ice, Certificate, new SeededRandomSource(1), new StringReader(input), _output);
 
-        return run.RunAsync(Settings, CancellationToken.None);
+        return run.RunAsync(Settings, feedback, CancellationToken.None);
     }
 }

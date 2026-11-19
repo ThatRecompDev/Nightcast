@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Phantom.Engine.Core.Randomness;
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.Ice;
 
@@ -77,6 +78,67 @@ public sealed class StreamOfferTests
 
         Assert.NotEqual(first.Split("\r\n")[1], second.Split("\r\n")[1]);
         Assert.Equal(StreamOffer.Create(Ice, Fingerprint, new SeededRandomSource(7)), first);
+    }
+
+    [Fact]
+    public void Without_feedback_the_offer_is_the_one_before_it()
+    {
+        string offer = StreamOffer.Create(Ice, Fingerprint, new SeededRandomSource(7));
+
+        Assert.Equal(offer, StreamOffer.Create(Ice, Fingerprint, new SeededRandomSource(7), BitrateFeedback.Off));
+        Assert.DoesNotContain("b=", offer, StringComparison.Ordinal);
+        Assert.DoesNotContain("a=extmap", offer, StringComparison.Ordinal);
+        Assert.DoesNotContain("goog-remb", offer, StringComparison.Ordinal);
+        Assert.DoesNotContain("transport-cc", offer, StringComparison.Ordinal);
+        Assert.Contains("m=video 9 UDP/TLS/RTP/SAVPF 102 104 106 45\r\nc=IN IP4 0.0.0.0\r\na=rtcp:9 IN IP4 0.0.0.0\r\n", offer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_bandwidth_line_follows_the_video_connection_line_in_kbit_and_bit_per_second()
+    {
+        string offer = StreamOffer.Create(Ice, Fingerprint, new SeededRandomSource(7), new BitrateFeedback { BandwidthKbps = 80000 });
+
+        Assert.Contains("m=video 9 UDP/TLS/RTP/SAVPF 102 104 106 45\r\nc=IN IP4 0.0.0.0\r\nb=AS:80000\r\nb=TIAS:80000000\r\na=rtcp:9", offer, StringComparison.Ordinal);
+        Assert.Single(offer.Split("\r\n"), static line => line.StartsWith("b=AS:", StringComparison.Ordinal));
+        Assert.DoesNotContain("goog-remb", offer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Remb_offers_goog_remb_on_every_video_payload_alone()
+    {
+        string offer = StreamOffer.Create(Ice, Fingerprint, new SeededRandomSource(7), new BitrateFeedback { RembKbps = 80000 });
+        var lines = offer.Split("\r\n");
+
+        Assert.Equal(["a=rtcp-fb:102 goog-remb", "a=rtcp-fb:104 goog-remb", "a=rtcp-fb:106 goog-remb", "a=rtcp-fb:45 goog-remb"], lines.Where(static line => line.EndsWith("goog-remb", StringComparison.Ordinal)));
+        Assert.DoesNotContain("b=", offer, StringComparison.Ordinal);
+        Assert.DoesNotContain("transport-cc", offer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Transport_wide_cc_offers_the_extension_on_sound_and_video_and_transport_cc_on_every_payload()
+    {
+        string offer = StreamOffer.Create(Ice, Fingerprint, new SeededRandomSource(7), new BitrateFeedback { TransportWideCc = true });
+        var lines = offer.Split("\r\n");
+
+        Assert.Equal(2, lines.Count(static line => line == "a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01"));
+        Assert.Equal(["a=rtcp-fb:111 transport-cc", "a=rtcp-fb:102 transport-cc", "a=rtcp-fb:104 transport-cc", "a=rtcp-fb:106 transport-cc", "a=rtcp-fb:45 transport-cc"], lines.Where(static line => line.EndsWith("transport-cc", StringComparison.Ordinal)));
+        Assert.DoesNotContain("goog-remb", offer, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_answer_says_which_feedback_it_kept()
+    {
+        string answer = "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 104\r\nb=AS:50000\r\na=extmap:1 urn:ietf:params:rtp-hdrext:toffset\r\n"
+            + "a=extmap:5/sendonly http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01\r\n"
+            + "a=rtcp-fb:104 nack pli\r\na=rtcp-fb:104 transport-cc\r\n";
+
+        var kept = AnswerFeedback.Of(answer);
+
+        Assert.Equal(new AnswerFeedback(5, false, true, "b=AS:50000"), kept);
+        Assert.Equal("transport-wide extmap id 5, transport-cc, b=AS:50000", kept.Describe());
+        Assert.Equal(new AnswerFeedback(0, false, false, null), AnswerFeedback.Of("v=0\r\na=rtcp-fb:104 nack\r\n"));
+        Assert.Equal("nothing", AnswerFeedback.Of(string.Empty).Describe());
+        Assert.True(AnswerFeedback.Of("a=rtcp-fb:104 goog-remb\n").Remb);
     }
 
     [Fact]

@@ -7,6 +7,7 @@ using Phantom.Engine.Core.Collections;
 using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Net.Transport;
 using Phantom.Relay.Stream.Channels;
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Sdp;
@@ -41,6 +42,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private readonly PadMailbox _pads;
     private readonly TimeProvider _clock;
     private readonly IRandomSource _random;
+    private readonly BitrateFeedback _feedback;
     private readonly IceAgent _agent;
     private readonly ByteRing _ring;
     private readonly int[] _counts = new int[CountKinds];
@@ -54,16 +56,18 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private long _channelsStartedAt;
     private DatagramEndpoint? _path;
 
-    public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, PadMailbox pads, TimeProvider clock, IRandomSource random)
+    /// <summary>The media path sends the bitrate <paramref name="feedback"/> the offer proposed.</summary>
+    public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, PadMailbox pads, TimeProvider clock, IRandomSource random, BitrateFeedback feedback)
     {
         _transport = transport;
         _video = video;
         _audio = audio;
         _pads = pads;
 
-        // The thread's clock and randomness.
+        // The thread's clock and randomness, and the feedback the offer proposed.
         _clock = clock;
         _random = random;
+        _feedback = feedback;
 
         // The ICE agent with the offer's credentials, and the receive ring sized for the largest datagram.
         _agent = new IceAgent(transport, clock, random, local);
@@ -255,7 +259,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     {
         _session = session;
         _path = _agent.Selected;
-        Media = new MediaReceiver(_client!.Profile!.Value, _client.KeyingMaterial!, VideoPayloads.Of(_answer), this, _video, _audio, _clock);
+        Media = new MediaReceiver(_client!.Profile!.Value, _client.KeyingMaterial!, VideoPayloads.Of(_answer), this, _video, _audio, _clock, _feedback, AnswerFeedback.Of(_answer).TransportWideId);
         Channels = new ConsoleChannels(session, _bridge!, _pads, _clock, _random);
         Channels.Open();
         _channelsStartedAt = _clock.GetTimestamp();

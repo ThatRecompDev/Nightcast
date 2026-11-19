@@ -2,6 +2,7 @@
 
 using Phantom.Engine.Core.Randomness;
 using Phantom.Relay.Stream.Channels;
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.Stream.Setup;
 using Phantom.Relay.WebRtc.Dtls;
@@ -13,8 +14,8 @@ namespace Phantom.Relay.Tools.Probe;
 
 /// <summary>
 /// One live probe (docs/architecture/probe.md): sign in when needed, list the consoles, start a session on the chosen
-/// one, wait until it takes an offer, send the probe offer and show what the console answers, and always stop the
-/// session it started. It never prints a token.
+/// one, wait until it takes an offer, send the probe offer (with the bitrate feedback switched on) and show what the
+/// console answers, and always stop the session it started. It never prints a token.
 /// </summary>
 public sealed class ProbeRun
 {
@@ -41,7 +42,13 @@ public sealed class ProbeRun
         _output = output;
     }
 
-    public async Task<int> RunAsync(StreamSettings settings, CancellationToken cancellation)
+    public Task<int> RunAsync(StreamSettings settings, CancellationToken cancellation)
+    {
+        return RunAsync(settings, BitrateFeedback.Off, cancellation);
+    }
+
+    /// <summary>The run, offering the bitrate <paramref name="feedback"/> (the live ICE run must send the same).</summary>
+    public async Task<int> RunAsync(StreamSettings settings, BitrateFeedback feedback, CancellationToken cancellation)
     {
         try
         {
@@ -53,7 +60,7 @@ public sealed class ProbeRun
                 return NoConsole;
             }
 
-            await ProbeConsoleAsync(console, settings, cancellation);
+            await ProbeConsoleAsync(console, settings, feedback, cancellation);
 
             return Succeeded;
         }
@@ -71,7 +78,7 @@ public sealed class ProbeRun
         }
     }
 
-    private async Task ProbeConsoleAsync(XboxConsole console, StreamSettings settings, CancellationToken cancellation)
+    private async Task ProbeConsoleAsync(XboxConsole console, StreamSettings settings, BitrateFeedback feedback, CancellationToken cancellation)
     {
         _output.WriteLine($"Starting a session on {console.Name}, asking for {settings.Resolution} (OS name '{settings.OsName}')");
         var session = await _sessions.StartAsync(console.ServerId, settings, cancellation);
@@ -79,7 +86,7 @@ public sealed class ProbeRun
         try
         {
             await _sessions.WaitUntilReadyAsync(session, new StateWriter(_output), cancellation);
-            await OfferAsync(session, cancellation);
+            await OfferAsync(session, feedback, cancellation);
         }
         finally
         {
@@ -87,17 +94,19 @@ public sealed class ProbeRun
         }
     }
 
-    private async Task OfferAsync(StreamSession session, CancellationToken cancellation)
+    private async Task OfferAsync(StreamSession session, BitrateFeedback feedback, CancellationToken cancellation)
     {
         var ice = IceCredentials.Create(_random);
-        _output.WriteLine("Sending the offer; the console answers:");
-        string offer = StreamOffer.Create(ice, _certificate.Fingerprint, _random);
+        _output.WriteLine($"Sending the offer (bitrate feedback: {feedback.Describe()}); the console answers:");
+        string offer = StreamOffer.Create(ice, _certificate.Fingerprint, _random, feedback);
         string answer = await _sessions.ExchangeSdpAsync(session, offer, cancellation);
 
         foreach (string line in AnswerSummary.Of(answer))
         {
             _output.WriteLine($"  {line}");
         }
+
+        _output.WriteLine($"  the answer kept of the bitrate feedback: {AnswerFeedback.Of(answer).Describe()}");
 
         _output.WriteLine("Running ICE against the console:");
         var outcome = await _ice.RunAsync(session, ice, _certificate, answer, cancellation);
@@ -136,6 +145,7 @@ public sealed class ProbeRun
         var counts = media.Counts;
         _output.WriteLine($"  SRTP: {counts.Decrypted} decrypted, {counts.Refused} refused; {counts.Rtcp} RTCP, {counts.Audio} sound packets");
         _output.WriteLine($"  video: {counts.AccessUnits} frames assembled ({counts.Keyframes} keyframes), {counts.Dropped} dropped, {counts.Lost} packets lost, {counts.KeyframeRequests} keyframe requests");
+        ReportBitrate(media);
 
         if (media.DecoderProblem is not null)
         {
@@ -145,6 +155,15 @@ public sealed class ProbeRun
         }
 
         _output.WriteLine($"  decoded: {media.Pictures} pictures at {media.Width}x{media.Height}; decode {Milliseconds(media.AverageDecode)} average, {Milliseconds(media.WorstDecode)} worst; decode queue at most {media.DeepestQueue} deep");
+    }
+
+    /// <summary>The bitrate over the seconds that carried video, and the feedback that went out.</summary>
+    private void ReportBitrate(MediaReport media)
+    {
+        var counts = media.Counts;
+        long unit = BitrateTally.Average(counts.VideoBytes, counts.AccessUnits);
+        _output.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"  bitrate: video {media.VideoAverageMegabits:F1} Mbit/s average, {media.VideoPeakMegabits:F1} peak; access unit {unit} bytes on average; sound {media.AudioAverageMegabits:F2} Mbit/s"));
+        _output.WriteLine($"  feedback sent: {counts.RembSent} REMB, {counts.TransportFeedbackSent} transport feedback");
     }
 
     private void ReportChannels(ChannelReport? channels)

@@ -3,12 +3,12 @@
 namespace Phantom.Relay.Tools.Probe;
 
 /// <summary>
-/// The lines of the console's SDP answer that say what it will send: each media line and its codec, format, bandwidth
-/// and picture-size attributes. Credentials, fingerprints and candidates are left out.
+/// The lines of the console's SDP answer that say what it will send: each media line and its codec, format, bandwidth,
+/// header extension, RTCP feedback and picture-size attributes. Credentials, fingerprints and candidates are left out.
 /// </summary>
 public static class AnswerSummary
 {
-    private static readonly string[] Kept = ["m=", "b=", "a=rtpmap:", "a=fmtp:", "a=imageattr:", "a=framerate:", "a=sendonly", "a=recvonly", "a=sendrecv", "a=inactive", "a=setup:"];
+    private static readonly string[] Kept = ["m=", "b=", "a=rtpmap:", "a=fmtp:", "a=extmap", "a=rtcp-fb:", "a=imageattr:", "a=framerate:", "a=sendonly", "a=recvonly", "a=sendrecv", "a=inactive", "a=setup:"];
 
     public static IReadOnlyList<string> Of(string answer)
     {

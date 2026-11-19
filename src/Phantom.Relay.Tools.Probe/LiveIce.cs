@@ -2,6 +2,7 @@
 
 using Phantom.Engine.Core.Randomness;
 using Phantom.Engine.Net.Transport;
+using Phantom.Relay.Stream.Feedback;
 using Phantom.Relay.Stream.Input;
 using Phantom.Relay.Stream.Link;
 using Phantom.Relay.Stream.Media;
@@ -13,12 +14,13 @@ namespace Phantom.Relay.Tools.Probe;
 
 /// <summary>
 /// ICE, then DTLS, against the real console, measured: Stream's <see cref="ConsoleLink"/> does the work, and this loop
-/// pumps it phase by phase with a deadline each, then listens a little longer and reports what the console sent. Our
-/// host candidate goes through the service's ICE exchange.
+/// pumps it phase by phase with a deadline each, then listens a little longer and reports what the console sent, with
+/// the bitrate once a second on the <c>progress</c> writer. Our host candidate goes through the service's ICE exchange.
 /// </summary>
 public sealed class LiveIce : ILiveIce
 {
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan ReportInterval = TimeSpan.FromSeconds(1);
 
     private readonly IXHomeSessionService _sessions;
     private readonly IDatagramTransport _transport;
@@ -29,12 +31,14 @@ public sealed class LiveIce : ILiveIce
     private readonly TimeProvider _clock;
     private readonly IRandomSource _random;
     private readonly TimeSpan _listen;
+    private readonly BitrateFeedback _feedback;
+    private readonly TextWriter _progress;
 
     /// <summary>
     /// Keeps the stream for <c>listen</c> once connected: a few seconds to measure, <see cref="TimeSpan.MaxValue"/> to
-    /// watch until cancelled.
+    /// watch until cancelled. The media path sends the bitrate <c>feedback</c> the offer proposed.
     /// </summary>
-    public LiveIce(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, DecodeWorker video, TimeProvider clock, IRandomSource random, TimeSpan listen)
+    public LiveIce(IXHomeSessionService sessions, IDatagramTransport transport, uint hostAddress, DecodeWorker video, TimeProvider clock, IRandomSource random, TimeSpan listen, BitrateFeedback feedback, TextWriter progress)
     {
         _sessions = sessions;
         _transport = transport;
@@ -45,6 +49,8 @@ public sealed class LiveIce : ILiveIce
         _clock = clock;
         _random = random;
         _listen = listen;
+        _feedback = feedback;
+        _progress = progress;
     }
 
     public async Task<IceOutcome> RunAsync(StreamSession session, IceCredentials local, DtlsCertificate certificate, string answer, CancellationToken cancellation)
@@ -54,7 +60,7 @@ public sealed class LiveIce : ILiveIce
             return new IceOutcome(IceAgentState.Failed, null, TimeSpan.Zero, null, null, 0, 0, 0, 0);
         }
 
-        using var link = new ConsoleLink(_transport, local, _video, _audio, _pads, _clock, _random);
+        using var link = new ConsoleLink(_transport, local, _video, _audio, _pads, _clock, _random, _feedback);
         var exchanged = await _sessions.ExchangeIceAsync(session, [link.HostCandidate(_hostAddress)], cancellation);
         long start = _clock.GetTimestamp();
         link.StartIce(answer, exchanged);
@@ -66,8 +72,9 @@ public sealed class LiveIce : ILiveIce
         if (ice.State == IceAgentState.Connected)
         {
             outcome = RunDtls(link, certificate, outcome, cancellation);
-            Pump(link, _listen, static () => false, cancellation);
-            outcome = outcome with { Channels = link.Channels?.Report(link.FirstRtpAfter), Media = MediaOf(link) };
+            var tally = new BitrateTally(_clock);
+            Listen(link, tally, cancellation);
+            outcome = outcome with { Channels = link.Channels?.Report(link.FirstRtpAfter), Media = MediaOf(link, tally) };
         }
 
         return outcome with { LatestRoundTrip = ice.RoundTrip, DtlsDatagrams = link.DtlsDatagrams, RtpDatagrams = link.RtpDatagrams, OtherDatagrams = link.OtherDatagrams };
@@ -99,7 +106,7 @@ public sealed class LiveIce : ILiveIce
         return outcome with { DtlsResult = "connected", DtlsElapsed = link.DtlsElapsed, SrtpProfile = link.SrtpProfile?.ToString(), CipherSuite = link.CipherSuite };
     }
 
-    private MediaReport? MediaOf(ConsoleLink link)
+    private MediaReport? MediaOf(ConsoleLink link, BitrateTally tally)
     {
         var media = link.Media;
 
@@ -108,7 +115,50 @@ public sealed class LiveIce : ILiveIce
             return null;
         }
 
-        return new MediaReport(media.Counts(), _video.Pictures, _video.Width, _video.Height, _video.AverageDecode(), _video.WorstDecode(), _video.DeepestQueue, _video.Problem);
+        return new MediaReport(media.Counts(), _video.Pictures, _video.Width, _video.Height, _video.AverageDecode(), _video.WorstDecode(), _video.DeepestQueue, _video.Problem)
+        {
+            VideoAverageMegabits = tally.AverageVideo,
+            VideoPeakMegabits = tally.PeakVideo,
+            AudioAverageMegabits = tally.AverageAudio,
+        };
+    }
+
+    /// <summary>Pumps for the listening time as <see cref="Pump"/> does, writing the bitrate once a second.</summary>
+    private void Listen(ConsoleLink link, BitrateTally tally, CancellationToken cancellation)
+    {
+        long start = _clock.GetTimestamp();
+        long reportedAt = start;
+        Report(link, tally);
+
+        while (_clock.GetElapsedTime(start) < _listen)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            link.Pump();
+
+            if (_clock.GetElapsedTime(reportedAt) >= ReportInterval)
+            {
+                Report(link, tally);
+                reportedAt = _clock.GetTimestamp();
+            }
+
+            Thread.Yield();
+        }
+    }
+
+    private void Report(ConsoleLink link, BitrateTally tally)
+    {
+        var media = link.Media;
+        string? line = null;
+
+        if (media is not null)
+        {
+            line = tally.Sample(media.Counts());
+        }
+
+        if (line is not null)
+        {
+            _progress.WriteLine(line);
+        }
     }
 
     /// <summary>

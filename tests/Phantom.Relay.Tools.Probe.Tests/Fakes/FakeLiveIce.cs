@@ -16,6 +16,9 @@ public sealed class FakeLiveIce : ILiveIce
 
     public DtlsCertificate? Certificate { get; private set; }
 
+    /// <summary>The media path the outcome reports, when a test sets one.</summary>
+    public MediaReport? Media { get; set; }
+
     public Task<IceOutcome> RunAsync(StreamSession session, IceCredentials local, DtlsCertificate certificate, string answer, CancellationToken cancellation)
     {
         Local = local;
@@ -25,6 +28,6 @@ public sealed class FakeLiveIce : ILiveIce
         var roundTrip = TimeSpan.FromMilliseconds(1.25);
         var outcome = new IceOutcome(IceAgentState.Connected, selected, TimeSpan.FromMilliseconds(42), roundTrip, roundTrip, 2, 3, 0, 0);
 
-        return Task.FromResult(outcome with { DtlsResult = "connected", DtlsElapsed = TimeSpan.FromMilliseconds(8), SrtpProfile = "AeadAes128Gcm", CipherSuite = 0xC02B });
+        return Task.FromResult(outcome with { DtlsResult = "connected", DtlsElapsed = TimeSpan.FromMilliseconds(8), SrtpProfile = "AeadAes128Gcm", CipherSuite = 0xC02B, Media = Media });
     }
 }

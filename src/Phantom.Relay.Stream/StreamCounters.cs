@@ -8,7 +8,8 @@ namespace Phantom.Relay.Stream;
 /// The stream's running totals at one moment, read on the network thread: frames received (access units assembled),
 /// pictures decoded, units decoded and the time they took (and of it the hand-off of their pictures to the renderer),
 /// the slowest decode since the last reading, packets lost, keyframe requests, input reports sent, the picture's
-/// size, and the units that carried new pictures and repeats with the cadence they follow.
+/// size, the units that carried new pictures and repeats with the cadence they follow, and the RTP payload octets of
+/// video and sound received.
 /// </summary>
 public readonly record struct StreamCounters(
     long FramesReceived,
@@ -24,4 +25,6 @@ public readonly record struct StreamCounters(
     long KeyframeRequests,
     long InputReportsSent,
     int Width,
-    int Height);
+    int Height,
+    long VideoBytes,
+    long AudioBytes);
