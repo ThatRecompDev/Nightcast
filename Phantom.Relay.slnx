@@ -1,9 +1,11 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
     <Project Path="src/Phantom.Relay.Xbox/Phantom.Relay.Xbox.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Phantom.Relay.Architecture.Tests/Phantom.Relay.Architecture.Tests.csproj" />
+    <Project Path="tests/Phantom.Relay.Profiles.Tests/Phantom.Relay.Profiles.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Xbox.Tests/Phantom.Relay.Xbox.Tests.csproj" />
   </Folder>
 </Solution>
