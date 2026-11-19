@@ -5,17 +5,23 @@ WebRTC exists. It signs in, lists the consoles, starts a session, waits until th
 probe offer, shows what the console answers, and always stops the session it started.
 
 ```
-dotnet run --project src/Phantom.Relay.Tools.Probe -- [P720|P1080|P1080High|P1440] [--view] [--sign-out]
+dotnet run --project src/Phantom.Relay.Tools.Probe -- [P720|P1080|P1080High|P1440] [--view] [--seconds <n>]
+    [--bandwidth-line <kbit/s>] [--remb <kbit/s>] [--twcc] [--sign-out]
 ```
 
-The tier defaults to the default profile's (1440p). `--sign-out` forgets the kept account first.
+The tier defaults to the default profile's (1440p). `--sign-out` forgets the kept account first. `--seconds` keeps a
+measuring run for n seconds instead of six. The bitrate feedback switches (xhome.md, "Bitrate feedback") are off
+without their arguments and combine freely; the desktop app takes the same ones.
 
 ## What it keeps and prints
 
 - The Microsoft account tokens go to the user's own store: `phantom.relay` under the local application data
   (`UserStorage`, the engine's desktop store). Nothing goes into the repository.
-- It prints the console names, the session states and the answer's media lines (codecs, formats, bandwidth, picture
-  attributes). It never prints a token, a credential, a fingerprint or an ICE candidate.
+- It prints the console names, the session states and the answer's media lines (codecs, formats, bandwidth, header
+  extensions, RTCP feedback, picture attributes) and which of the offered bitrate feedback the answer kept. While the
+  stream runs it prints the video and sound bitrate once a second; at the end the video's average and peak Mbit/s,
+  the average access unit and the REMB and transport feedback packets sent. It never prints a token, a credential, a
+  fingerprint or an ICE candidate.
 
 ## The offer and the stream
 

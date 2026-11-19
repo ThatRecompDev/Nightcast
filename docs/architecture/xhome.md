@@ -49,6 +49,37 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
 `u16` LT RT, `u32` physical and virtual physicality (23 bytes). The console's vibration report: `u8 kind (128)`,
 `u8 type`, `u8 pad`, four `u8` motor percentages, `u16 duration`, `u16 delay`, `u8 repeat`.
 
+## Bitrate feedback
+
+On 2026-11-19 the console sent about 14 Mbit/s of 2560x1440 at 60 fps H.264 over a wired LAN (round trip about
+0.5 ms, no loss), to an offer whose video asks only for `nack` and `nack pli`, with no bandwidth line and no header
+extension, and a client whose only RTCP is the PLI. A WebRTC sender sets its target bitrate from the receiver's
+feedback; with none it may stay at its starting rate. To find out whether the console sends more when told it may,
+Relay can give it the feedback a WebRTC sender expects, as three independent switches (`BitrateFeedback`), all off by
+default so nothing changes until a live run shows which helps. The probe and the desktop take the same arguments
+(`BitrateFeedbackArguments`); the stream logs what was offered and what the answer kept.
+
+| Switch | Standard | On the wire |
+|---|---|---|
+| `--bandwidth-line <kbit/s>` | RFC 4566 (`b=AS`), RFC 3890 (`b=TIAS`) | in the video section after `c=`: `b=AS:<kbit/s>` and `b=TIAS:<bit/s>` |
+| `--remb <kbit/s>` | draft-alvestrand-rmcat-remb-03 | `a=rtcp-fb:<pt> goog-remb` on every video payload; an SRTCP PSFB FMT=15 packet (`8F CE`, length, our SSRC, media SSRC 0, `REMB`, the SSRC count (8 bits), exponent (6) and mantissa (18) of the bitrate, the video's SSRC) as soon as the video's SSRC is known, then once a second |
+| `--twcc` | draft-holmer-rmcat-transport-wide-cc-extensions-01, RFC 8285 | `a=extmap:3 http://www.ietf.org/id/draft-holmer-rmcat-transport-wide-cc-extensions-01` on sound and video and `a=rtcp-fb:<pt> transport-cc` on every payload (Opus included); every 50 ms an SRTCP RTPFB FMT=15 packet (`8F CD`, length, our SSRC, the media SSRC, base sequence, status count, 24-bit reference time in 64 ms and 8-bit feedback count, run-length and one- or two-bit status vector chunks, receive deltas in 250 µs, one octet for 0 to 63.75 ms, else two signed, zero padding to a word) |
+
+How the transport feedback is built (`TransportFeedbackRecorder`): the transport-wide sequence number is read from
+each decrypted packet's header extension in either form (one-byte `0xBEDE` or two-byte `0x100x`) under the id the
+**answer** gives (none echoed, none read and none sent); its arrival time is the injected clock's when the network
+thread handles the datagram, so the deltas carry the receive loop's batching. A feedback covers every packet since the
+last; a loss after the last received packet waits for the next feedback, a late packet already reported lost is not
+reported again, a delta beyond 16 signed bits starts the next feedback, and one feedback stays within 1200 octets. The
+padding is zeros without the P bit, as the draft writes it.
+
+The received bitrate is the RTP payload (without RTP header and SRTP tag) a second, video and sound apart:
+`StreamStats.VideoMegabitsPerSecond` and `AudioMegabitsPerSecond`, in the stats line, the block on screen and the
+window title when it fits; the probe prints it every second and the average, peak and average access unit at the end.
+
+**The live result is pending**: whether the console's answer echoes `b=`, `goog-remb`, `transport-cc` and the
+extension, and whether its bitrate moves, has not been seen yet.
+
 ## Confirmed live
 
 - The plain account chain (Microsoft account code, RPS user token, XSTS for `http://gssv.xboxlive.com/`, the
@@ -94,6 +125,8 @@ Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
 - whether a pad other than pad 0 needs its own `gamepadChanged` on the control channel before its first report (the
   stream sends one);
 - the vibration report's layout;
+- whether the console reads a bandwidth line, REMB or transport-wide feedback at all, and which raises its video
+  bitrate above the 14 Mbit/s seen at 1440p60 (see "Bitrate feedback");
 - the client description messages after the handshake, and whether the console needs all of them;
 - whether the engine's H.264 decoder (openh264) takes the console's Main-profile stream at 1440p60 as fast as the
   latency budget needs; Constrained Baseline is the fallback the console also offers;
