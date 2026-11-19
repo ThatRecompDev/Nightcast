@@ -179,6 +179,27 @@ public sealed class ProbeRun
 
         _output.WriteLine($"  received after ICE: {outcome.DtlsDatagrams} DTLS, {outcome.RtpDatagrams} RTP/RTCP, {outcome.OtherDatagrams} other datagrams");
         ReportChannels(outcome.Channels);
+        ReportMedia(outcome.Media);
+    }
+
+    private void ReportMedia(MediaReport? media)
+    {
+        if (media is null)
+        {
+            return;
+        }
+
+        _output.WriteLine($"  SRTP: {media.Decrypted} decrypted, {media.Refused} refused; {media.Rtcp} RTCP, {media.Audio} sound packets");
+        _output.WriteLine($"  video: {media.AccessUnits} frames assembled ({media.Keyframes} keyframes), {media.Dropped} dropped, {media.Lost} packets lost");
+
+        if (media.DecoderProblem is not null)
+        {
+            _output.WriteLine($"  decoder: could not open ({media.DecoderProblem})");
+
+            return;
+        }
+
+        _output.WriteLine($"  decoded: {media.Pictures} pictures at {media.Width}x{media.Height}; decode {Milliseconds(media.AverageDecode)} average, {Milliseconds(media.WorstDecode)} worst");
     }
 
     private void ReportChannels(ChannelReport? channels)

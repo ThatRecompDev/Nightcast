@@ -48,6 +48,7 @@ public sealed class LiveIce : ILiveIce, IDisposable
 
     private DtlsDatagramBridge? _bridge;
     private ConsoleChannels? _channels;
+    private MediaReceiver? _media;
     private long _channelsStartedAt;
     private TimeSpan? _firstRtp;
 
@@ -82,9 +83,9 @@ public sealed class LiveIce : ILiveIce, IDisposable
 
         if (agent.State == IceAgentState.Connected)
         {
-            outcome = RunDtls(agent, certificate, DtlsFingerprint.Read(answer), outcome, cancellation);
+            outcome = RunDtls(agent, certificate, answer, outcome, cancellation);
             Pump(agent, ListenAfterConnect, static () => false, cancellation);
-            outcome = outcome with { Channels = _channels?.Report(_firstRtp) };
+            outcome = outcome with { Channels = _channels?.Report(_firstRtp), Media = _media?.Report() };
         }
 
         return outcome with { LatestRoundTrip = agent.RoundTrip, DtlsDatagrams = _counts[Dtls], RtpDatagrams = _counts[Rtp], OtherDatagrams = _counts[Other] };
@@ -93,11 +94,14 @@ public sealed class LiveIce : ILiveIce, IDisposable
     public void Dispose()
     {
         _bridge?.Dispose();
+        _media?.Dispose();
     }
 
     /// <summary>Runs the handshake on its own thread while this loop carries its datagrams over the selected path.</summary>
-    private IceOutcome RunDtls(IceAgent agent, DtlsCertificate certificate, string? expected, IceOutcome outcome, CancellationToken cancellation)
+    private IceOutcome RunDtls(IceAgent agent, DtlsCertificate certificate, string answer, IceOutcome outcome, CancellationToken cancellation)
     {
+        string? expected = DtlsFingerprint.Read(answer);
+
         if (expected is null)
         {
             return outcome with { DtlsResult = "the answer carries no fingerprint" };
@@ -125,7 +129,8 @@ public sealed class LiveIce : ILiveIce, IDisposable
             return outcome with { DtlsResult = $"failed: {reason}", DtlsElapsed = elapsed };
         }
 
-        // The session is up: the data channels run over it from this loop.
+        // The session is up: the media path decrypts with the console's key, the data channels run over it.
+        _media = new MediaReceiver(client.Profile!.Value, client.KeyingMaterial!, VideoPayloads.Of(answer), _clock);
         _channels = new ConsoleChannels(handshake.Result, _bridge, _clock, _random);
         _channels.Open();
         _channelsStartedAt = _clock.GetTimestamp();
@@ -187,6 +192,7 @@ public sealed class LiveIce : ILiveIce, IDisposable
         }
 
         _channels?.Pump();
+        _media?.Service();
         SendDtls(agent);
     }
 
@@ -215,6 +221,7 @@ public sealed class LiveIce : ILiveIce, IDisposable
         else if (DatagramClass.IsRtp(payload))
         {
             _counts[Rtp]++;
+            _media?.Receive(payload);
 
             if (_firstRtp is null && _channels is not null)
             {

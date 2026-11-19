@@ -33,4 +33,7 @@ public sealed record IceOutcome(
 
     /// <summary>The data channels, when DTLS connected.</summary>
     public ChannelReport? Channels { get; init; }
+
+    /// <summary>The media path, when DTLS connected.</summary>
+    public MediaReport? Media { get; init; }
 }

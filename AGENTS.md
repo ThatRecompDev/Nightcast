@@ -7,6 +7,9 @@ rules; it is binding and outranks every default. The plan is [docs/architecture/
 
 ## Things that are easy to get wrong
 
+- **Personal use only: no public release, ever** (the owner's rule). No published builds, packages, store listings
+  or public repository. The optional LSFG support rests on the owner's personal-use permission and loads Lossless
+  Scaling from the owner's own install at run time; nothing of it is in this repository.
 - Reuse first, then modularize, then create: search Phantom.Engine before writing anything new. A mechanic any app
   could use (WebRTC, a gamepad source, HTTPS, frame interpolation) goes into the engine, through the engine
   coordinator; only the console's streaming protocol stays here.

@@ -17,6 +17,13 @@ Never in this repository: account tokens or refresh tokens, captures of a real s
 ids, gamertags, user hashes, e-mail addresses, absolute paths, or anything a Microsoft service sent that identifies an
 account. Tests build their payloads by hand from the shapes in the guides.
 
+## 1a. Personal use only
+
+Relay is the owner's personal tool and is never released publicly: no published builds, packages, store listings,
+public repository or remote other than the owner's own. Third-party software it can use at run time (Lossless
+Scaling's frame generation, under the owner's personal-use permission) is loaded from the owner's own install and is
+never copied into the repository.
+
 ## 2. The engine comes first
 
 Relay is an engine app, the way a game is. Before writing anything, search the engine. What any app could use goes
