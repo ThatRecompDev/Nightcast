@@ -155,6 +155,64 @@ public sealed class LosslessUpscalerLiveTests
         Assert.True(upscaled > bilinear, "the upscaled NV12 picture is no closer to the truth than a bilinear resize");
     }
 
+    /// <summary>
+    /// The decoder path's work for a picture split by step, each waited for (so at full clocks): NV12 to RGBA at 1440p,
+    /// LS1 to 3600 x 2025, RGBA to NV12 at the slot's 3600 x 2026.
+    /// </summary>
+    [Fact]
+    public void The_stage_costs_by_step()
+    {
+        using var catalog = OpenCatalog();
+        using var device = new D3D11TestDevice();
+        var nv12 = device.CreateNv12(PictureWidth, PictureHeight, ToNv12(Picture(Scene.Natural, Variant.Clean), PictureWidth, PictureHeight));
+        var slot = device.CreateNv12Target(3600, 2026);
+        var geometry = new LosslessUpscaleGeometry(PictureWidth, PictureHeight, 3600, 2025, 3600, 2026);
+
+        using var upscaler = LosslessUpscaler.TryCreate(device.Device, catalog, LosslessUpscalerSettings.Default, geometry, _log, out var problem);
+        Assert.True(upscaler is not null, problem);
+        using var toRgba = Nv12ToRgbaConverter.TryCreate(device.Device, PictureWidth, PictureHeight, out problem);
+        using var toNv12 = RgbaToNv12Converter.TryCreate(device.Device, 3600, 2026, out problem);
+        Assert.True(toRgba is not null && toNv12 is not null, problem);
+
+        var rgba = Measure(upscaler.Device, () => toRgba.Convert(nv12, 0));
+        var scaled = Measure(upscaler.Device, () => upscaler.Upscale(toRgba.Output));
+        var back = Measure(upscaler.Device, () => toNv12.Convert(upscaler.Output, slot));
+        _output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"GPU medians on the 3D queue: NV12 to RGBA {rgba:F3} ms, LS1 {scaled:F3} ms, RGBA to NV12 {back:F3} ms (the video processor's own engine is not on it)"));
+
+        // Throughput with the video engine in: many pictures queued, then the wall time until the GPU is done with all.
+        var alone = Throughput(upscaler.Device, () => upscaler.Upscale(toRgba.Output));
+        var whole = Throughput(upscaler.Device, () => toRgba.Convert(nv12, 0) && upscaler.Upscale(toRgba.Output) && toNv12.Convert(upscaler.Output, slot));
+        _output.WriteLine(string.Create(CultureInfo.InvariantCulture, $"wall time per picture, queued back to back: LS1 alone {alone:F3} ms, the whole stage {whole:F3} ms"));
+    }
+
+    private static unsafe double Throughput(ComputeDevice device, Func<bool> step)
+    {
+        const int Pictures = 200;
+        Assert.True(device.DeviceApi.CreateQuery(new QueryDescription { Query = 0 }, out var done) >= 0);
+
+        for (var warm = 0; warm < 10; warm++)
+        {
+            Assert.True(step());
+        }
+
+        var clock = Stopwatch.StartNew();
+
+        for (var picture = 0; picture < Pictures; picture++)
+        {
+            Assert.True(step());
+        }
+
+        device.ContextApi.End(done);
+
+        while (device.ContextApi.GetData(done, null, 0, 0) != 0)
+        {
+            Thread.Yield();
+        }
+
+        ComObjects.Release(ref done);
+
+        return clock.Elapsed.TotalMilliseconds / Pictures;
+    }
     [Theory]
     [InlineData(TruthWidth, TruthHeight)]
     [InlineData(3600, 2025)]
@@ -280,6 +338,34 @@ public sealed class LosslessUpscalerLiveTests
         Assert.True(upscaler.Upscale(input));
 
         return device.ReadRgba(upscaler.Output, geometry.OutputTextureWidth, geometry.OutputTextureHeight);
+    }
+
+    private static double Measure(ComputeDevice device, Func<bool> step)
+    {
+        using var timer = new GpuTimer(device);
+        var times = new List<double>();
+
+        for (var run = 0; run < Timed + 5; run++)
+        {
+            timer.Begin();
+            Assert.True(step());
+            timer.End();
+            var clock = Stopwatch.StartNew();
+            double milliseconds;
+
+            while (!timer.TryRead(out milliseconds))
+            {
+                Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), "the GPU never reached the end of the timed work");
+                Thread.Yield();
+            }
+
+            if (run >= 5)
+            {
+                times.Add(milliseconds);
+            }
+        }
+
+        return Median(times);
     }
 
     private static List<double> Time(LosslessUpscaler upscaler, nint input)

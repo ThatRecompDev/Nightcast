@@ -48,7 +48,7 @@ internal static class PngFile
         return compressed.ToArray();
     }
 
-    private static void Chunk(Stream file, string type, byte[] data)
+    private static void Chunk(System.IO.Stream file, string type, byte[] data)
     {
         var length = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(length, data.Length);

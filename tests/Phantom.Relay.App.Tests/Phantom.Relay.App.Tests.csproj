@@ -21,4 +21,10 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <!-- The Lossless upscalers' test pictures and PNG writer, so FSR 1 is measured on the same pictures. -->
+  <ItemGroup>
+    <Compile Include="../Phantom.Relay.Lsfg.Tests/Live/UpscaleTestImages.cs" Link="Pictures/UpscaleTestImages.cs" />
+    <Compile Include="../Phantom.Relay.Lsfg.Tests/Live/PngFile.cs" Link="Pictures/PngFile.cs" />
+  </ItemGroup>
+
 </Project>
