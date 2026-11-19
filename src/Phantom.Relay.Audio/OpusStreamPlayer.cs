@@ -17,8 +17,12 @@ namespace Phantom.Relay.Audio;
 /// </summary>
 public sealed class OpusStreamPlayer : IAudioRenderer
 {
-    /// <summary>The device buffer to ask for: 10 ms, a packet. A device that underruns with it wants more.</summary>
-    public const int DeviceBufferFrames = 480;
+    /// <summary>
+    /// The device buffer to ask for: 512 frames, 10.7 ms at 48 kHz. sokol_audio cuts its buffer into 128-frame packets
+    /// and refuses one that is not a multiple of them (BACKEND_BUFFER_SIZE_ISNT_MULTIPLE_OF_PACKET_SIZE), so 480, an
+    /// exact 10 ms, opened no device on the owner's PC (2026-11-19). A device that underruns with it wants more.
+    /// </summary>
+    public const int DeviceBufferFrames = 512;
 
     /// <summary>Packets in flight and waiting together: the reorder window and as much again crossing threads.</summary>
     private const int PacketSlots = 128;
@@ -46,7 +50,7 @@ public sealed class OpusStreamPlayer : IAudioRenderer
         SampleRate = outputRate;
     }
 
-    /// <summary>What to open the device with: 48 kHz stereo, 10 ms buffers.</summary>
+    /// <summary>What to open the device with: 48 kHz stereo, 512-frame (10.7 ms) buffers.</summary>
     public static AudioDeviceRequest DeviceRequest { get; } =
         new(OpusStreamFormat.SampleRate, OpusStreamFormat.Channels, DeviceBufferFrames);
 

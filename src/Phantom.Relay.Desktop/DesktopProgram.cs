@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using System.Collections.Immutable;
 using System.Runtime.Versioning;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Phantom.Engine.Audio.Codecs.Opus;
 using Phantom.Engine.Audio.Sokol;
@@ -10,6 +12,8 @@ using Phantom.Engine.Graphics.Sokol;
 using Phantom.Engine.Hosting;
 using Phantom.Engine.Hosting.Gamepads;
 using Phantom.Engine.Hosting.Input;
+using Phantom.Engine.Logging;
+using Phantom.Engine.Media.Video;
 using Phantom.Engine.Media.Vpx;
 using Phantom.Engine.Net.Transport;
 using Phantom.Engine.Net.Transport.Udp;
@@ -20,6 +24,7 @@ using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
 using Phantom.Relay.Http.Bcl;
+using Phantom.Relay.Media.Windows;
 using Phantom.Relay.Pads.Windows;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Profiles.Input;
@@ -113,7 +118,7 @@ public static class DesktopProgram
     private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, TimeProvider clock)
     {
         uint? hostAddress = LocalAddress.Find();
-        using var decoder = H264Decoder.TryOpen(out string? problem);
+        using var decoder = OpenDecoder(clock, out string? problem);
 
         if (hostAddress is null || decoder is null)
         {
@@ -122,23 +127,62 @@ public static class DesktopProgram
             return Refused;
         }
 
+        // The log: the engine's ring, written to the console's error stream after every frame.
+        using var logs = new RingLoggerFactory(LogOptions.Default, clock);
+        var pump = new LogPump(logs, ImmutableArray.Create<ILogSink>(new TextLogSink(Console.Error)));
+
         // The sound: the console's Opus through the jitter buffer into the system's output.
-        using var speakers = new SokolAudioDevice(NullLogger<SokolAudioDevice>.Instance);
+        using var speakers = new SokolAudioDevice(new Logger<SokolAudioDevice>(logs));
         var player = new OpusStreamPlayer(new EngineOpusFrameDecoder(new OpusDecoder(OpusStreamFormat.Channels)), clock, OpusStreamFormat.SampleRate, PlayoutSettings.Default);
         IStreamAudioSink sound = StartSound(speakers, player);
+        pump.Drain();
 
         // A UDP socket on any address and a free port, for ICE and everything after it.
         using var transport = new UdpDatagramTransport(DatagramEndpoint.FromOctets(0, 0, 0, 0, 0), MaxDatagramLength);
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
-        using var connection = new StreamConnection(sessions, transport, hostAddress.Value, decoder, sound, profiles, clock, random, NullLogger<StreamConnection>.Instance);
+        using var connection = new StreamConnection(sessions, transport, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
         Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}. F3 shows the stats; Escape ends.");
         connection.Start(console.ServerId, settings);
 
-        RunWindow(connection, ProfileChoice.For(profiles, null));
+        RunWindow(connection, ProfileChoice.For(profiles, null), pump);
         connection.Stop();
         speakers.Stop();
+        pump.Flush();
 
         return Outcome(connection.Stats);
+    }
+
+    /// <summary>
+    /// The fastest H.264 decoder there is: on Windows Media Foundation's on the GPU (DXVA, low-latency mode: about 6 ms a
+    /// 1440p picture with its read-back, where openh264 took 8 on average and 41 at a keyframe), else openh264.
+    /// </summary>
+    private static IVideoDecoder? OpenDecoder(TimeProvider clock, out string? problem)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var gpu = MediaFoundationH264Decoder.TryOpen(clock, preferHardware: true, out problem);
+
+            if (gpu is not null)
+            {
+                Console.WriteLine(DecoderLine(gpu.IsHardwareAccelerated, gpu.FallbackReason));
+
+                return gpu;
+            }
+        }
+
+        Console.WriteLine("Decoding with openh264 in software.");
+
+        return H264Decoder.TryOpen(out problem);
+    }
+
+    private static string DecoderLine(bool hardware, string? fallback)
+    {
+        if (hardware)
+        {
+            return "Decoding on the GPU (Media Foundation, DXVA).";
+        }
+
+        return $"Decoding with Media Foundation in software: {fallback}";
     }
 
     /// <summary>The sink the stream's sound goes to: the player when the system's output opened, silence when not.</summary>
@@ -160,36 +204,36 @@ public static class DesktopProgram
     /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
     /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
     /// </summary>
-    private static void RunWindow(StreamConnection connection, StreamProfile profile)
+    private static void RunWindow(StreamConnection connection, StreamProfile profile, LogPump pump)
     {
         if (OperatingSystem.IsWindows())
         {
-            RunWindowWithWindowsPads(connection, profile);
+            RunWindowWithWindowsPads(connection, profile, pump);
 
             return;
         }
 
-        Run(connection, profile, new NoGamepads());
+        Run(connection, profile, new NoGamepads(), pump);
     }
 
     [SupportedOSPlatform("windows")]
-    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile)
+    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile, LogPump pump)
     {
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads));
+        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), pump);
         playStation.Stop();
     }
 
     /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame.</summary>
-    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads)
+    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, LogPump pump)
     {
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
         var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports);
-        var driver = new ApplicationDriver(application, new InputFrame(InputLimits.Default), pads);
+        var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);
     }
