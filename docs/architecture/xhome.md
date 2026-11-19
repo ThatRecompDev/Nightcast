@@ -49,6 +49,12 @@ touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 butt
 `u16` LT RT, `u32` physical and virtual physicality (23 bytes). The console's vibration report: `u8 kind (128)`,
 `u8 type`, `u8 pad`, four `u8` motor percentages, `u16 duration`, `u16 delay`, `u8 repeat`.
 
+## Confirmed live
+
+- The plain account chain (Microsoft account code, RPS user token, XSTS for `http://gssv.xboxlive.com/`, the
+  `xhome` login) is accepted: no device token is needed (2026-11-19).
+- The console list and the play call are accepted, and a session reaches `Provisioning` on the console.
+
 ## Not confirmed against a console yet
 
 Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
@@ -56,8 +62,11 @@ Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
 - the gamepad entry's physicality fields (sent as 0) and the report's exact size;
 - the vibration report's layout;
 - the client description messages after the handshake, and whether the console needs all of them;
-- whether the XSTS token from the plain RPS chain (no device token) is accepted for the console offering; open
-  clients also use the device-token (SISU) flow, which would be the fallback;
+- whether the console starts streaming for our play request: on the first live probe (2026-11-19, a Series X that
+  was on) the session went `Provisioning` then `Failed` with the console's own error `0xC0840005`
+  (`StartStreamingSessionV2Command failed`, state `ServerStartStreamingV2CommandSent`) at both 1440p and 1080p. One
+  public report of the same state was cured by power-cycling the console; whether our request differs from the
+  official client's is open until the official client is checked on the same console;
 - the tier the `tizen` OS name gives on console streaming (it is known from cloud streaming);
 - **how a client asks for 1440p.** Remote play gained 1440p at higher bitrates in 2026 (first for Insiders; the
   console must output 1440p or 4K, and "Auto" quality picks the highest the link allows). The web client's code names
