@@ -53,54 +53,72 @@ public sealed class PadComposerTests
     }
 
     [Fact]
-    public void The_gta_preset_with_a_pad_connected_merges_both()
+    public void With_a_pad_connected_the_mouse_and_keys_play_alone_once_used()
     {
+        // A connected pad at rest with a drifting right stick, under its threshold.
         var pads = new TestPads();
-        var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.South, new Vector2(0.3f, 0f), new Vector2(1f, 0f), 0.4f));
-        pads.Hold(Key.Space);
+        var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.None, Vector2.Zero, new Vector2(0.2f, 0.1f), 0f));
         pads.Hold(Key.W);
         frame.Inject(new InputEvent(InputEventKind.PointerDown) { Button = PointerButton.Right });
+        frame.Inject(new InputEvent(InputEventKind.PointerMoved) { Delta = new Vector2(3f, 0f) });
+        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
 
-        var pad = new PadComposer(GtaKeyboardMousePreset.Profile).Compose(frame, Frame);
+        var pad = composer.Compose(frame, Frame);
 
-        // Buttons from both hands; the keys push the left stick further, the pad the right one.
-        Assert.Equal(XboxButtons.A | XboxButtons.X, pad.Buttons);
-        Assert.Equal(0f, pad.LeftX);
+        Assert.Equal(PadSource.KeyboardMouse, composer.Source);
         Assert.Equal(1f, pad.LeftY);
-        Assert.Equal(1f, pad.RightX, 5);
-        Assert.Equal(0f, pad.RightY, 5);
-
-        // The pad's right trigger and the right mouse's left trigger.
-        Assert.Equal((0.4f - PadSettings.StandardTriggerDeadZone) / (1f - PadSettings.StandardTriggerDeadZone), pad.RightTrigger, 5);
         Assert.Equal(1f, pad.LeftTrigger);
+        Assert.True(pad.RightX > 0f);
+        Assert.Equal(0f, pad.RightY, 5);
     }
 
     [Fact]
-    public void The_stick_pushed_further_wins()
+    public void The_pad_takes_over_when_it_is_used_and_the_keyboard_is_not()
     {
         var pads = new TestPads();
-        var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.None, new Vector2(0f, 0.8f), Vector2.Zero, 0f));
         pads.Hold(Key.W);
-        pads.Hold(Key.LeftAlt);
+        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
+        composer.Compose(pads.Frame, Frame);
+        pads.Release(Key.W);
+        var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.South, new Vector2(0f, 0.8f), Vector2.Zero, 0f));
 
-        var pad = new PadComposer(GtaKeyboardMousePreset.Profile).Compose(frame, Frame);
+        var pad = composer.Compose(frame, Frame);
 
-        // Walking tilts the keys' stick halfway up; the pad's is further down.
-        Assert.True(pad.LeftY < -MovementSettings.StandardWalkTilt);
-        Assert.Equal(0f, pad.LeftX, 5);
+        Assert.Equal(PadSource.Controller, composer.Source);
+        Assert.Equal(XboxButtons.A, pad.Buttons);
+        Assert.True(pad.LeftY < 0f);
     }
 
     [Fact]
-    public void Triggers_merge_by_the_further_pull()
+    public void A_frame_using_both_keeps_the_source()
     {
-        var pad = new XboxPadState(XboxButtons.A, 0f, 0f, 0f, 0f, 0.2f, 0.9f);
-        var keyboardMouse = new XboxPadState(XboxButtons.B, 0f, 0f, 0f, 0f, 0.7f, 0.1f);
+        var pads = new TestPads();
+        pads.Hold(Key.W);
+        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
+        composer.Compose(pads.Frame, Frame);
+        var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.South, Vector2.Zero, Vector2.Zero, 0f));
 
-        var merged = PadMerge.Merge(in pad, in keyboardMouse);
+        var pad = composer.Compose(frame, Frame);
 
-        Assert.Equal(XboxButtons.A | XboxButtons.B, merged.Buttons);
-        Assert.Equal(0.7f, merged.LeftTrigger);
-        Assert.Equal(0.9f, merged.RightTrigger);
+        Assert.Equal(PadSource.KeyboardMouse, composer.Source);
+        Assert.Equal(XboxButtons.None, pad.Buttons);
+        Assert.Equal(1f, pad.LeftY);
+    }
+
+    [Fact]
+    public void Idle_hands_keep_the_source_and_the_pad_rests()
+    {
+        var pads = new TestPads();
+        pads.Hold(Key.W);
+        var composer = new PadComposer(GtaKeyboardMousePreset.Profile);
+        composer.Compose(pads.Frame, Frame);
+        pads.Release(Key.W);
+        var frame = pads.Connect(0, TestPads.Pad(GamepadButtons.None, new Vector2(0.1f, 0f), Vector2.Zero, 0.05f));
+
+        var pad = composer.Compose(frame, Frame);
+
+        Assert.Equal(PadSource.KeyboardMouse, composer.Source);
+        Assert.Equal(default, pad);
     }
 
     [Fact]

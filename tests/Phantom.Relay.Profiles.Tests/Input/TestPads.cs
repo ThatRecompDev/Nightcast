@@ -44,6 +44,11 @@ public sealed class TestPads : IGamepadSource
         Frame.Inject(new InputEvent(InputEventKind.KeyDown) { Key = key });
     }
 
+    public void Release(Key key)
+    {
+        Frame.Inject(new InputEvent(InputEventKind.KeyUp) { Key = key });
+    }
+
     public void Poll(Span<GamepadState> pads)
     {
         _pads.CopyTo(pads);
