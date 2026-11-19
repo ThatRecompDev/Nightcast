@@ -19,6 +19,9 @@ namespace Phantom.Relay.App.Pictures;
 /// the picture's or the rectangle's size changes, and the two first passes run only for a new picture, so a refresh
 /// that shows the same picture costs the last pass alone. Unlike <see cref="PictureUpscaler"/>, which makes its targets
 /// per call for a picture upscaled once, nothing is made per frame (an engine candidate: a per-frame mode of it).
+/// Lossless Scaling's upscalers run where the pictures are decoded and hand them over at the rectangle's size, which then
+/// needs nothing here; until they do, or where they cannot run, such a picture is upscaled with FSR 1. RCAS's sharpness
+/// is <see cref="Sharpness"/> (F7 steps it, <see cref="NextSharpness"/>).
 /// </summary>
 public sealed class StreamUpscaler
 {
@@ -60,8 +63,20 @@ public sealed class StreamUpscaler
         _device = device;
     }
 
-    /// <summary>The filter now: FSR 1 by default, or xBR; <see cref="UpscaleMethod.Bilinear"/> leaves the picture as it was drawn.</summary>
+    /// <summary>F7's RCAS sharpness steps, in stops (0 sharpest): the engine's default, then sharper, then softer.</summary>
+    private static readonly float[] SharpnessSteps = [PictureUpscaler.FsrSharpness, 0.1f, 0f, 0.5f];
+
+    /// <summary>F6's order: FSR 1, Lossless Scaling's LS1, its performance setting and SGSR, xBR, then off.</summary>
+    private static readonly UpscaleMethod[] MethodSteps = [UpscaleMethod.Fsr, UpscaleMethod.Ls1, UpscaleMethod.Ls1Performance, UpscaleMethod.Sgsr, UpscaleMethod.Xbr, UpscaleMethod.Bilinear];
+
+    /// <summary>The filter now: FSR 1 by default; <see cref="UpscaleMethod.Bilinear"/> leaves the picture as it was drawn.</summary>
     public UpscaleMethod Method { get; private set; } = UpscaleMethod.Fsr;
+
+    /// <summary>RCAS's sharpness in stops (0 sharpest), <see cref="PictureUpscaler.FsrSharpness"/> unless F7 changed it.</summary>
+    public float Sharpness { get; private set; } = PictureUpscaler.FsrSharpness;
+
+    /// <summary>The filter the engine runs: the method's own, or FSR 1 for a picture a decoder-side method has not upscaled.</summary>
+    public UpscaleMethod EngineMethod { get; private set; } = UpscaleMethod.Fsr;
 
     /// <summary>True when the last <see cref="Plan"/> made the targets anew, so the picture must be drawn into them again.</summary>
     public bool IsStale { get; private set; }
@@ -71,20 +86,27 @@ public sealed class StreamUpscaler
 
     public int OutputHeight => _height;
 
-    /// <summary>F6's order: FSR 1, then off, then xBR, then FSR 1 again.</summary>
+    /// <summary>F6's order: FSR 1, LS1, LS1 performance, SGSR, xBR, off, then FSR 1 again.</summary>
     public static UpscaleMethod Next(UpscaleMethod method)
     {
-        if (method == UpscaleMethod.Bilinear)
-        {
-            return UpscaleMethod.Xbr;
-        }
+        return MethodSteps[(Array.IndexOf(MethodSteps, method) + 1) % MethodSteps.Length];
+    }
 
-        if (method == UpscaleMethod.Xbr)
-        {
-            return UpscaleMethod.Fsr;
-        }
+    /// <summary>The size in pixels of <paramref name="destination"/> (left, top, right, bottom in 0..1) of the window, rounded as <see cref="Plan"/> rounds it.</summary>
+    public static (int Width, int Height) RectangleSize(Vector4 destination, int windowWidth, int windowHeight)
+    {
+        var x = (int)((destination.X * windowWidth) + Half);
+        var y = (int)((destination.Y * windowHeight) + Half);
+        var width = (int)((destination.Z * windowWidth) + Half) - x;
+        var height = (int)((destination.W * windowHeight) + Half) - y;
 
-        return UpscaleMethod.Bilinear;
+        return (width, height);
+    }
+
+    /// <summary>F7's order: 0.2 (the engine's default), 0.1, 0 (sharpest), 0.5 (softer), then 0.2 again.</summary>
+    public static float NextSharpness(float sharpness)
+    {
+        return SharpnessSteps[(Array.IndexOf(SharpnessSteps, sharpness) + 1) % SharpnessSteps.Length];
     }
 
     public void Initialize()
@@ -107,7 +129,25 @@ public sealed class StreamUpscaler
             Method = UpscaleMethod.Fsr;
         }
 
+        EngineMethod = Method;
+
+        if (Method.RunsOnDecoder())
+        {
+            EngineMethod = UpscaleMethod.Fsr;
+        }
+
         IsStale = true;
+    }
+
+    /// <summary>RCAS sharpens by <paramref name="sharpness"/> stops (0 sharpest) from the next frame on.</summary>
+    public void UseSharpness(float sharpness)
+    {
+        Sharpness = sharpness;
+
+        if (_hasScaled)
+        {
+            _rcas = Uniforms(_width, _height, RcasMode, 1f, sharpness);
+        }
     }
 
     /// <summary>
@@ -151,7 +191,7 @@ public sealed class StreamUpscaler
         _device.EndPass();
         IsStale = false;
 
-        if (Method != UpscaleMethod.Fsr)
+        if (EngineMethod != UpscaleMethod.Fsr)
         {
             return;
         }
@@ -170,7 +210,7 @@ public sealed class StreamUpscaler
         _device.ApplyViewport(_x, _y, _width, _height);
         _device.ApplyPipeline(_frame);
 
-        if (Method == UpscaleMethod.Fsr)
+        if (EngineMethod == UpscaleMethod.Fsr)
         {
             Apply(_scaledBindings, _rcas);
         }
@@ -206,12 +246,12 @@ public sealed class StreamUpscaler
     }
 
     // A pass's uniforms: the source's size and inverse, the filter, RCAS's sharpness and the scale.
-    private static UpscaleUniforms Uniforms(int width, int height, float mode, float scale)
+    private static UpscaleUniforms Uniforms(int width, int height, float mode, float scale, float sharpness)
     {
         return new UpscaleUniforms
         {
             Size = new Vector4(width, height, 1f / width, 1f / height),
-            Mode = new Vector4(mode, PictureUpscaler.FsrSharpness, scale, 0f),
+            Mode = new Vector4(mode, sharpness, scale, 0f),
         };
     }
 
@@ -229,9 +269,9 @@ public sealed class StreamUpscaler
         _pictureBindings = new GpuBindings(default, default, _picture.Texture, _nearest);
         _scaledBindings = new GpuBindings(default, default, _scaled.Texture, _nearest);
         var scale = width / (float)pictureWidth;
-        _easu = Uniforms(pictureWidth, pictureHeight, EasuMode, scale);
-        _rcas = Uniforms(width, height, RcasMode, 1f);
-        _xbr = Uniforms(pictureWidth, pictureHeight, XbrMode, scale);
+        _easu = Uniforms(pictureWidth, pictureHeight, EasuMode, scale, Sharpness);
+        _rcas = Uniforms(width, height, RcasMode, 1f, Sharpness);
+        _xbr = Uniforms(pictureWidth, pictureHeight, XbrMode, scale, Sharpness);
     }
 
     private void Destroy()

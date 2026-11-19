@@ -7,6 +7,7 @@ using Phantom.Engine.Graphics.Devices;
 using Phantom.Engine.Media.Rendering;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Stream;
+using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.App.Pictures;
 
@@ -15,15 +16,14 @@ namespace Phantom.Relay.App.Pictures;
 /// (<see cref="GpuPicturePresenter"/>) or read back and uploaded (<see cref="MovieRenderer"/>). Where the window shows it
 /// larger than it came and an upscaler is chosen, it is drawn at its own size into a target and upscaled into the
 /// letterboxed rectangle (<see cref="StreamUpscaler"/>, FSR 1 by default); else it is drawn into the rectangle as it is
-/// (bilinear). The frame calls <see cref="Take"/>, then <see cref="Prepare"/> before the window's pass (the upscaler's
+/// (bilinear). Lossless Scaling's upscalers run where the pictures are decoded: the rectangle's size is asked of the
+/// decoder (<see cref="ScaleRequest"/>, <see cref="IGpuPictureSource.Scale"/>), whose pictures then come at that size
+/// and are drawn one to one; until then, or where they cannot run, FSR 1 upscales them here. The frame calls <see cref="Take"/>, then <see cref="Prepare"/> before the window's pass (the upscaler's
 /// own passes, for a new picture only), <see cref="Draw"/> in it, and <see cref="EndFrame"/> after the commit. While the
 /// device times its passes (<see cref="TimePasses"/>), the upscaler's passes before the window's are timed. Render thread only.
 /// </summary>
 public sealed class StreamPicture
 {
-    private const string OffLabel = "upscale off";
-    private const string FsrLabel = "FSR 1";
-    private const string XbrLabel = "xBR";
 
     // A frame that upscaled a new picture has a pass of its own before the window's (two for FSR 1).
     private const int UpscaledPasses = 2;
@@ -35,6 +35,7 @@ public sealed class StreamPicture
     private readonly MovieRenderer _offscreen;
     private readonly GpuPicturePresenter? _gpu;
     private readonly StreamUpscaler _upscaler;
+    private readonly ScaleRequest _request = new();
     private double[] _passTimes = [];
     private bool _upscaled;
     private bool _timing;
@@ -69,6 +70,12 @@ public sealed class StreamPicture
     /// <summary>The upscaler chosen (<see cref="UpscaleMethod.Bilinear"/>: off).</summary>
     public UpscaleMethod Upscaler => _upscaler.Method;
 
+    /// <summary>FSR 1's RCAS sharpness in stops (0 sharpest).</summary>
+    public float Sharpness => _upscaler.Sharpness;
+
+    /// <summary>LS1's network asked of the decoder (<see cref="PictureScale.DefaultStrength"/> unless F7 changed it).</summary>
+    public int Strength { get; private set; } = PictureScale.DefaultStrength;
+
     /// <summary>When the picture on screen was ready, on the stream's clock.</summary>
     public long ReadyAt
     {
@@ -93,10 +100,22 @@ public sealed class StreamPicture
         _gpu?.Initialize();
     }
 
-    /// <summary>Upscales with <paramref name="method"/> from the next frame on.</summary>
+    /// <summary>Upscales with <paramref name="method"/> from the next frame on (a decoder-side one is asked of the decoder then).</summary>
     public void Use(UpscaleMethod method)
     {
         _upscaler.Use(method);
+    }
+
+    /// <summary>FSR 1's RCAS sharpens by <paramref name="sharpness"/> stops (0 sharpest) from the next frame on.</summary>
+    public void UseSharpness(float sharpness)
+    {
+        _upscaler.UseSharpness(sharpness);
+    }
+
+    /// <summary>LS1 runs network <paramref name="strength"/> (0 to 4, more detail as it rises), asked of the decoder from the next frame on.</summary>
+    public void UseStrength(int strength)
+    {
+        Strength = Math.Clamp(strength, PictureScale.MinimumStrength, PictureScale.MaximumStrength);
     }
 
     /// <summary>Times the device's passes (where it can), so <see cref="Describe"/> says what the upscaler's cost.</summary>
@@ -136,6 +155,7 @@ public sealed class StreamPicture
     [HotPath]
     public void Prepare(Vector4 destination, int windowWidth, int windowHeight)
     {
+        Ask(destination, windowWidth, windowHeight);
         var (width, height) = PictureSize();
         _upscaled = _upscaler.Plan(width, height, destination, windowWidth, windowHeight);
 
@@ -170,27 +190,31 @@ public sealed class StreamPicture
         _gpu?.EndFrame();
     }
 
-    /// <summary>"FSR 1 → 3840x2160 0.3 ms", "upscale off", or the filter and why it waits (a window no larger than the picture).</summary>
-    public string Describe()
+    /// <summary>
+    /// "FSR 1 (RCAS 0.2) → 3840x2160 0.30 ms", "upscale off", or the filter and why it waits (a window no larger than
+    /// the picture). For a decoder-side method, what the decoder says of it (<paramref name="decoderUpscale"/>: "LS1 →
+    /// 3600x2025 0.21 ms", or why it is off) and, while FSR 1 stands in for it here, FSR 1's part.
+    /// </summary>
+    public string Describe(string decoderUpscale)
     {
-        if (_upscaler.Method == UpscaleMethod.Bilinear)
+        var method = _upscaler.Method;
+
+        if (method == UpscaleMethod.Bilinear)
         {
-            return OffLabel;
+            return method.Label();
         }
 
-        var name = FsrLabel;
-
-        if (_upscaler.Method == UpscaleMethod.Xbr)
+        if (method.RunsOnDecoder())
         {
-            name = XbrLabel;
+            return DescribeDecoder(method, decoderUpscale);
         }
 
         if (!_upscaled)
         {
-            return $"{name}: the picture is not shown larger";
+            return $"{EngineLabel()}: the picture is not shown larger";
         }
 
-        return string.Create(CultureInfo.InvariantCulture, $"{name} → {_upscaler.OutputWidth}x{_upscaler.OutputHeight} {_upscaleMilliseconds:F2} ms");
+        return Engine();
     }
 
     public void Cleanup()
@@ -200,6 +224,50 @@ public sealed class StreamPicture
         _upscaler.Cleanup();
         _offscreen.Cleanup();
         _renderer.Cleanup();
+    }
+
+    // The decoder is asked for the rectangle's size with a decoder-side method (once it holds), for none with another.
+    [HotPath]
+    private void Ask(Vector4 destination, int windowWidth, int windowHeight)
+    {
+        var (width, height) = StreamUpscaler.RectangleSize(destination, windowWidth, windowHeight);
+
+        if (_request.Update(_upscaler.Method, Strength, width, height, out var scale))
+        {
+            _stream.GpuPictures?.Scale(scale);
+        }
+    }
+
+    private string DescribeDecoder(UpscaleMethod method, string decoderUpscale)
+    {
+        var state = decoderUpscale;
+
+        if (state.Length == 0)
+        {
+            state = $"{method.Label()}: waiting for the decoder's GPU path";
+        }
+
+        if (!_upscaled)
+        {
+            return state;
+        }
+
+        return $"{state}; {Engine()}";
+    }
+
+    private string EngineLabel()
+    {
+        if (_upscaler.EngineMethod == UpscaleMethod.Xbr)
+        {
+            return UpscaleMethod.Xbr.Label();
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{UpscaleMethod.Fsr.Label()} (RCAS {_upscaler.Sharpness:F1})");
+    }
+
+    private string Engine()
+    {
+        return string.Create(CultureInfo.InvariantCulture, $"{EngineLabel()} → {_upscaler.OutputWidth}x{_upscaler.OutputHeight} {_upscaleMilliseconds:F2} ms");
     }
 
     private (int Width, int Height) PictureSize()

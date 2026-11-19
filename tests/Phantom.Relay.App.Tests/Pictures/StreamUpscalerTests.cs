@@ -47,15 +47,43 @@ public sealed class StreamUpscalerTests
     }
 
     [Fact]
-    public void F6_steps_through_fsr_off_and_xbr_and_the_old_sharp_name_is_fsr()
+    public void F6_steps_through_every_upscaler_and_the_old_sharp_name_is_fsr()
     {
-        Assert.Equal(UpscaleMethod.Bilinear, StreamUpscaler.Next(UpscaleMethod.Fsr));
-        Assert.Equal(UpscaleMethod.Xbr, StreamUpscaler.Next(UpscaleMethod.Bilinear));
-        Assert.Equal(UpscaleMethod.Fsr, StreamUpscaler.Next(UpscaleMethod.Xbr));
+        UpscaleMethod[] order = [UpscaleMethod.Fsr, UpscaleMethod.Ls1, UpscaleMethod.Ls1Performance, UpscaleMethod.Sgsr, UpscaleMethod.Xbr, UpscaleMethod.Bilinear, UpscaleMethod.Fsr];
+
+        for (var step = 0; step < order.Length - 1; step++)
+        {
+            Assert.Equal(order[step + 1], StreamUpscaler.Next(order[step]));
+        }
 
         var upscaler = Initialized();
         upscaler.Use(UpscaleMethod.Sharp);
         Assert.Equal(UpscaleMethod.Fsr, upscaler.Method);
+    }
+
+    [Fact]
+    public void F7_steps_rcas_sharpness_sharper_then_softer_and_back()
+    {
+        Assert.Equal(0.1f, StreamUpscaler.NextSharpness(0.2f));
+        Assert.Equal(0f, StreamUpscaler.NextSharpness(0.1f));
+        Assert.Equal(0.5f, StreamUpscaler.NextSharpness(0f));
+        Assert.Equal(0.2f, StreamUpscaler.NextSharpness(0.5f));
+
+        var upscaler = Initialized();
+        Assert.Equal(0.2f, upscaler.Sharpness);
+        upscaler.UseSharpness(0f);
+        Assert.Equal(0f, upscaler.Sharpness);
+    }
+
+    [Fact]
+    public void A_decoder_side_method_falls_back_to_fsr_for_a_picture_not_yet_upscaled_and_draws_one_already_upscaled_as_it_is()
+    {
+        var upscaler = Initialized();
+        upscaler.Use(UpscaleMethod.Ls1);
+
+        Assert.Equal(UpscaleMethod.Fsr, upscaler.EngineMethod);
+        Assert.True(upscaler.Plan(2560, 1440, Whole, 3840, 2160));
+        Assert.False(upscaler.Plan(3840, 2160, Whole, 3840, 2160));
     }
 
     private static StreamUpscaler Initialized()

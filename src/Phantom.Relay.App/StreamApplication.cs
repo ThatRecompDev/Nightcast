@@ -33,7 +33,9 @@ namespace Phantom.Relay.App;
 /// or on again and F5 steps through its settings (<see cref="FrameGenerationSwitch"/>), live: the decode thread makes the
 /// new stage before its next new picture, so the render thread never waits; the stats show what runs, and with the
 /// stats hidden the title shows what was chosen. A window larger than the picture shows it upscaled
-/// (<see cref="StreamPicture"/>: FSR 1 unless the profile says otherwise); F6 steps through FSR 1, off and xBR, live.
+/// (<see cref="StreamPicture"/>: FSR 1 unless the profile says otherwise); F6 steps through FSR 1, Lossless Scaling's
+/// LS1, its performance setting and SGSR (on the decoder's GPU), xBR and off, live; F7 steps FSR 1's sharpness, or
+/// with LS1 its network.
 /// Fullscreen (F11, Alt+Enter) waits for the engine: its window has no fullscreen call yet. Escape closes the window, except while keyboard and mouse play, when it
 /// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console.
 /// </summary>
@@ -200,6 +202,10 @@ public sealed class StreamApplication : IApplication
             {
                 SwitchUpscaler();
             }
+            else if (inputEvent.Key == Key.F7)
+            {
+                SwitchSharpness();
+            }
             else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
             {
                 _captureMouse = !_captureMouse;
@@ -262,10 +268,29 @@ public sealed class StreamApplication : IApplication
         }
     }
 
-    /// <summary>F6 picks the next upscaler (FSR 1, off, xBR); the title shows it at once.</summary>
+    /// <summary>F6 picks the next upscaler (FSR 1, LS1, LS1 performance, SGSR, xBR, off); the title shows it at once.</summary>
     private void SwitchUpscaler()
     {
         _picture.Use(StreamUpscaler.Next(_picture.Upscaler));
+        _upscalerChanged = true;
+        _shownStats = null;
+    }
+
+    /// <summary>
+    /// F7 picks FSR 1's next sharpness (RCAS 0.2, 0.1, 0, 0.5 stops), or with LS1 its next network (2, 3, 4, 0, 1); the
+    /// title shows it at once.
+    /// </summary>
+    private void SwitchSharpness()
+    {
+        if (_picture.Upscaler is UpscaleMethod.Ls1 or UpscaleMethod.Ls1Performance)
+        {
+            _picture.UseStrength(PictureScale.NextStrength(_picture.Strength));
+        }
+        else
+        {
+            _picture.UseSharpness(StreamUpscaler.NextSharpness(_picture.Sharpness));
+        }
+
         _upscalerChanged = true;
         _shownStats = null;
     }
@@ -333,7 +358,7 @@ public sealed class StreamApplication : IApplication
         }
 
         var report = Report();
-        var upscale = _picture.Describe();
+        var upscale = _picture.Describe(report.Upscale);
         _window.SetTitle(StatsText.Title(stats, present, report, upscale));
         _overlay.Show(StatsText.Lines(stats, present, report, _pads.Source, upscale));
 
@@ -343,7 +368,7 @@ public sealed class StreamApplication : IApplication
         }
     }
 
-    /// <summary>The title with the stats hidden: the plain one, and what F4, F5 or F6 chose once they were used.</summary>
+    /// <summary>The title with the stats hidden: the plain one, and what F4 to F7 chose once they were used.</summary>
     private string QuietTitle(StreamStats stats)
     {
         var title = StatsText.Plain(stats);
@@ -355,7 +380,7 @@ public sealed class StreamApplication : IApplication
 
         if (_upscalerChanged)
         {
-            title = $"{title} | {_picture.Describe()}";
+            title = $"{title} | {_picture.Describe(Report().Upscale)}";
         }
 
         return StatsText.Clamp(title);
