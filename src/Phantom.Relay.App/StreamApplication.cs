@@ -11,6 +11,7 @@ using Phantom.Engine.Ui.Text;
 using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Logging;
 using Phantom.Relay.App.Pictures;
+using Phantom.Relay.App.Recording;
 using Phantom.Relay.App.Stats;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Profiles.Input;
@@ -36,7 +37,9 @@ namespace Phantom.Relay.App;
 /// stats hidden the title shows what was chosen. A window larger than the picture shows it upscaled
 /// (<see cref="StreamPicture"/>: FSR 1 unless the profile says otherwise); F6 steps through FSR 1, Lossless Scaling's
 /// LS1, its performance setting and SGSR (on the decoder's GPU), xBR and off, live; F7 steps FSR 1's sharpness, or
-/// with LS1 its network.
+/// with LS1 its network. F9 starts or stops a recording (<see cref="IStreamRecorder"/>, the head's); while it records
+/// and for a few seconds after, its status ("● REC 00:42", where it was saved, the comparison's progress) shows in the
+/// title and over the picture's top-left corner (in the stats' block while F3 shows them).
 /// Fullscreen (F11, Alt+Enter) waits for the engine: its window has no fullscreen call yet. Escape closes the window, except while keyboard and mouse play, when it
 /// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console.
 /// </summary>
@@ -58,16 +61,22 @@ public sealed class StreamApplication : IApplication
     private readonly FrameGenerationSwitch _generation = new();
     private readonly ILogger<StreamApplication> _log;
     private readonly RumblePlayer _rumble;
+    private readonly IStreamRecorder _recorder;
+    private readonly StatsOverlay _recordOverlay;
 
     private TimeSpan _now;
+    private string? _recording;
     private bool _showStats;
     private bool _upscalerChanged;
     private StreamStats? _shownStats;
     private StreamProfile? _profile;
     private bool _captureMouse;
 
-    /// <summary>The window's app; <c>motors</c> run the console's vibration on the pads, null where the pads have none.</summary>
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, TimeProvider clock, ILogger<StreamApplication> log)
+    /// <summary>
+    /// The window's app; <c>motors</c> run the console's vibration on the pads, null where the pads have none; F9 goes to
+    /// the head's <c>recorder</c>.
+    /// </summary>
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, IStreamRecorder recorder, TimeProvider clock, ILogger<StreamApplication> log)
     {
         _log = log;
         _clock = clock;
@@ -78,16 +87,19 @@ public sealed class StreamApplication : IApplication
         _stream = stream;
         _pads = pads;
         _reports = reports;
+        _recorder = recorder;
 
         // Pictures read back, and those left on the GPU where the decoder can share them; upscaled to a larger window.
         _picture = new StreamPicture(device, stream);
         _overlay = new StatsOverlay(device, window, fonts, log);
+        _recordOverlay = new StatsOverlay(device, window, fonts, log);
     }
 
     public void Initialize()
     {
         _picture.Initialize();
         _overlay.Initialize();
+        _recordOverlay.Initialize();
         ShowTitle();
     }
 
@@ -98,6 +110,7 @@ public sealed class StreamApplication : IApplication
         CaptureMouse(input);
         SendPad(input, seconds);
         PlayRumble();
+        FollowRecording();
 
         Present();
         ShowTitle();
@@ -128,8 +141,10 @@ public sealed class StreamApplication : IApplication
     public void Cleanup()
     {
         _rumble.Stop();
+        _recorder.Stop();
         _picture.Cleanup();
         _overlay.Cleanup();
+        _recordOverlay.Cleanup();
         _stream.Stop();
     }
 
@@ -173,6 +188,10 @@ public sealed class StreamApplication : IApplication
         {
             _overlay.Draw();
         }
+        else if (_recording is not null)
+        {
+            _recordOverlay.Draw();
+        }
     }
 
     private void HandleKeys(InputFrame input)
@@ -206,6 +225,10 @@ public sealed class StreamApplication : IApplication
             else if (inputEvent.Key == Key.F7)
             {
                 SwitchSharpness();
+            }
+            else if (inputEvent.Key == Key.F9)
+            {
+                ToggleRecording();
             }
             else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
             {
@@ -300,6 +323,49 @@ public sealed class StreamApplication : IApplication
         _shownStats = null;
     }
 
+    /// <summary>F9 starts a recording with what the window shows now (the frame generation, its multiplier, the upscaler), or stops it.</summary>
+    private void ToggleRecording()
+    {
+        var report = Report();
+        var chosen = _generation.Current;
+        var multiplier = chosen.IsOn ? chosen.ClampedMultiplier : 1;
+        _recorder.Toggle(new RecordingSettings(report.FrameGeneration, multiplier, _picture.Describe(report.Upscale)));
+    }
+
+    /// <summary>The recorder's status, over the picture and in the title, laid out again only when it changed.</summary>
+    private void FollowRecording()
+    {
+        var status = _recorder.Status;
+
+        if (ReferenceEquals(status, _recording))
+        {
+            return;
+        }
+
+        _recording = status;
+        _shownStats = null;
+
+        if (status is null)
+        {
+            _recordOverlay.Clear();
+
+            return;
+        }
+
+        _recordOverlay.Show([status]);
+    }
+
+    /// <summary>The stats' lines, the recorder's status first while it has one.</summary>
+    private string[] WithRecording(string[] lines)
+    {
+        if (_recording is null)
+        {
+            return lines;
+        }
+
+        return [_recording, .. lines];
+    }
+
     /// <summary>The mouse is locked to the window while it is captured and the window has the focus (F10 toggles it).</summary>
     private void CaptureMouse(InputFrame input)
     {
@@ -364,8 +430,8 @@ public sealed class StreamApplication : IApplication
 
         var report = Report();
         var upscale = _picture.Describe(report.Upscale);
-        _window.SetTitle(StatsText.Title(stats, present, report, upscale));
-        _overlay.Show(StatsText.Lines(stats, present, report, _pads.Source, upscale));
+        _window.SetTitle(StatsText.Clamp(WithRecording(StatsText.Title(stats, present, report, upscale))));
+        _overlay.Show(WithRecording(StatsText.Lines(stats, present, report, _pads.Source, upscale)));
 
         if (_log.IsEnabled(LogLevel.Information))
         {
@@ -388,6 +454,17 @@ public sealed class StreamApplication : IApplication
             title = $"{title} | {_picture.Describe(Report().Upscale)}";
         }
 
-        return StatsText.Clamp(title);
+        return StatsText.Clamp(WithRecording(title));
+    }
+
+    /// <summary>A title with the recorder's status first while it has one.</summary>
+    private string WithRecording(string title)
+    {
+        if (_recording is null)
+        {
+            return title;
+        }
+
+        return $"{_recording} | {title}";
     }
 }

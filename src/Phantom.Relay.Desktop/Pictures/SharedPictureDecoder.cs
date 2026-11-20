@@ -42,6 +42,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     private readonly List<SharedSurfaceRing> _retired = [];
     private readonly GeneratedPictures _frames;
     private readonly UpscaledPictures _upscale;
+    private readonly IShownPictureTap _shown;
     private MediaFoundationH264Decoder _decoder;
     private SharedSurfaceRing? _ring;
     private GpuPictureRing? _published;
@@ -57,12 +58,16 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
     private bool _sharing;
     private int _generation;
 
-    /// <summary>The <paramref name="decoder"/> (a hardware one; this takes it over and disposes it) and its log.</summary>
-    public SharedPictureDecoder(MediaFoundationH264Decoder decoder, TimeProvider clock, ILogger log)
+    /// <summary>
+    /// The <paramref name="decoder"/> (a hardware one; this takes it over and disposes it), its log, and the tap that sees
+    /// each picture shown (<paramref name="shown"/>: the recorder's).
+    /// </summary>
+    public SharedPictureDecoder(MediaFoundationH264Decoder decoder, TimeProvider clock, ILogger log, IShownPictureTap shown)
     {
         _decoder = decoder;
         _clock = clock;
         _log = log;
+        _shown = shown;
         _frames = new GeneratedPictures(clock, log);
         _upscale = new UpscaledPictures(log);
     }
@@ -193,7 +198,14 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
 
     public bool TryTake(out GpuPicture picture)
     {
-        return _slots.TryTake(out picture);
+        if (!_slots.TryTake(out picture))
+        {
+            return false;
+        }
+
+        _shown.Shown(in picture);
+
+        return true;
     }
 
     public void Release(in GpuPicture picture, nint fence, ulong value)
@@ -527,6 +539,7 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         }
 
         Volatile.Write(ref _published, new GpuPictureRing(_generation, handles.MoveToImmutable(), ring.FenceHandle, ring.Width, ring.Height));
+        _shown.UseRing(_generation, ring, _decoder.Device);
         _log.Sharing(ring.Count, ring.Width, ring.Height);
     }
 

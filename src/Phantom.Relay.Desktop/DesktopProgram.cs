@@ -23,9 +23,11 @@ using Phantom.Engine.Platform.Desktop.Storage;
 using Phantom.Engine.Ui.Text;
 using Phantom.Relay.App;
 using Phantom.Relay.App.Input;
+using Phantom.Relay.App.Recording;
 using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
 using Phantom.Relay.Desktop.Pictures;
+using Phantom.Relay.Desktop.Recording;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Media.Windows;
 using Phantom.Relay.Pads.Windows;
@@ -44,7 +46,8 @@ namespace Phantom.Relay.Desktop;
 /// <summary>
 /// The desktop's composition root: sign-in on the console window (the kept account, or the sign-in page and the pasted
 /// address), the console choice, then the stream in a resizable window with the H.264 decoder and the XInput pads.
-/// Closing the window or Escape stops the stream and the session. <c>--sign-out</c> forgets the kept account first;
+/// F9 records the stream (<see cref="StreamRecorder"/>, into the user's Videos folder). Closing the window or Escape
+/// stops the stream and the session, after a recording still being finished is done. <c>--sign-out</c> forgets the kept account first;
 /// the bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
 /// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
 /// <c>--no-feedback</c> turns it off.
@@ -158,7 +161,8 @@ public static class DesktopProgram
         var pump = new LogPump(logs, ImmutableArray.Create<ILogSink>(new TextLogSink(Console.Error)));
 
         uint? hostAddress = LocalAddress.Find();
-        using var decoder = OpenDecoder(clock, logs, out string? problem);
+        var shown = new ShownPictureTap();
+        using var decoder = OpenDecoder(clock, logs, shown, out string? problem);
 
         if (hostAddress is null || decoder is null)
         {
@@ -182,15 +186,28 @@ public static class DesktopProgram
         // The stream itself, on its own network thread.
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         using var connection = new StreamConnection(sessions, transport, doorbell, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
-        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats; Escape ends.");
+        var recorder = new StreamRecorder(connection, shown, RecordingPlaces.Find(), clock, new Logger<StreamRecorder>(logs));
+        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats, F9 records; Escape ends.");
         connection.Start(console.ServerId, settings, feedback);
 
-        RunWindow(connection, ProfileChoice.For(profiles, null), pump, clock, new Logger<StreamApplication>(logs));
+        RunWindow(connection, recorder, ProfileChoice.For(profiles, null), pump, clock, new Logger<StreamApplication>(logs));
         connection.Stop();
         speakers.Stop();
-        pump.Flush();
+        FinishRecordings(recorder, pump);
 
         return Outcome(connection.Stats);
+    }
+
+    /// <summary>A recording stopped as the window closed is finished (and compared) before the decoder goes.</summary>
+    private static void FinishRecordings(StreamRecorder recorder, LogPump pump)
+    {
+        if (recorder.IsFinishing)
+        {
+            Console.WriteLine("Finishing the recording and its comparison...");
+        }
+
+        recorder.WaitUntilDone();
+        pump.Flush();
     }
 
     /// <summary>
@@ -198,7 +215,7 @@ public static class DesktopProgram
     /// millisecond a 1440p picture, where openh264 took 8 on average and 41 at a keyframe), its pictures left on the GPU
     /// for the window to draw once it offers its adapter (else read back, 4.2 ms more), else openh264.
     /// </summary>
-    private static IVideoDecoder? OpenDecoder(TimeProvider clock, ILoggerFactory logs, out string? problem)
+    private static IVideoDecoder? OpenDecoder(TimeProvider clock, ILoggerFactory logs, ShownPictureTap shown, out string? problem)
     {
         if (OperatingSystem.IsWindows())
         {
@@ -208,7 +225,7 @@ public static class DesktopProgram
             {
                 Console.WriteLine(DecoderLine(gpu.IsHardwareAccelerated, gpu.FallbackReason));
 
-                return Shared(gpu, clock, logs);
+                return Shared(gpu, clock, logs, shown);
             }
         }
 
@@ -218,14 +235,14 @@ public static class DesktopProgram
     }
 
     /// <summary>A decoder on the GPU shares its pictures with the window's device; one in software reads them back.</summary>
-    private static IVideoDecoder Shared(MediaFoundationH264Decoder decoder, TimeProvider clock, ILoggerFactory logs)
+    private static IVideoDecoder Shared(MediaFoundationH264Decoder decoder, TimeProvider clock, ILoggerFactory logs, ShownPictureTap shown)
     {
         if (!decoder.IsHardwareAccelerated)
         {
             return decoder;
         }
 
-        return new SharedPictureDecoder(decoder, clock, logs.CreateLogger<SharedPictureDecoder>());
+        return new SharedPictureDecoder(decoder, clock, logs.CreateLogger<SharedPictureDecoder>(), shown);
     }
 
     private static string DecoderLine(bool hardware, string? fallback)
@@ -257,35 +274,35 @@ public static class DesktopProgram
     /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
     /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
     /// </summary>
-    private static void RunWindow(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    private static void RunWindow(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         if (OperatingSystem.IsWindows())
         {
-            RunWindowWithWindowsPads(connection, profile, pump, clock, log);
+            RunWindowWithWindowsPads(connection, recorder, profile, pump, clock, log);
 
             return;
         }
 
-        Run(connection, profile, new NoGamepads(), new NoSystemFonts(), pump, clock, log);
+        Run(connection, recorder, profile, new NoGamepads(), new NoSystemFonts(), pump, clock, log);
     }
 
     [SupportedOSPlatform("windows")]
-    private static void RunWindowWithWindowsPads(StreamConnection connection, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    private static void RunWindowWithWindowsPads(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        Run(connection, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), new WindowsSystemFonts(), pump, clock, log);
+        Run(connection, recorder, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), new WindowsSystemFonts(), pump, clock, log);
         playStation.Stop();
     }
 
     /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame and the stats drawn in a font of <paramref name="fonts"/>.</summary>
-    private static void Run(StreamConnection connection, StreamProfile profile, IGamepadSource pads, ISystemFonts fonts, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    private static void Run(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, IGamepadSource pads, ISystemFonts fonts, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, pads as IGamepadFeedback, clock, log);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, pads as IGamepadFeedback, recorder, clock, log);
         var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);

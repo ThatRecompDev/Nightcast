@@ -16,7 +16,7 @@ namespace Phantom.Relay.App.Stats;
 /// The stats as a small block in the window's top-left corner: a few short lines (<see cref="StatsText.Lines"/>) on a
 /// translucent dark panel, drawn over the picture in the frame's pass through the engine's canvas. The font is the
 /// system's (a monospaced face first), read once at <see cref="Initialize"/> and made into one glyph set of printable
-/// ASCII at an em of <see cref="BaseEm"/> logical pixels times the window's scale, smaller in a small window; a window
+/// ASCII (and the recorder's two marks) at an em of <see cref="BaseEm"/> logical pixels times the window's scale, smaller in a small window; a window
 /// whose size or scale asks for another em gets a new set when the next lines come (<see cref="Show"/>, once a
 /// second), never in a frame. Without a font it draws nothing and says so once. A frame's <see cref="Draw"/> fills one
 /// batch from the lines already laid out and allocates nothing.
@@ -43,6 +43,9 @@ public sealed class StatsOverlay
 
     private const char FirstPrintable = ' ';
     private const char LastPrintable = '~';
+
+    /// <summary>The recorder's marks beside ASCII: its dot ("● REC") and the ellipsis of a shortened folder (a face without them skips them).</summary>
+    private const string RecorderMarks = "●…";
 
     /// <summary>The faces asked for, in order: a monospaced one keeps the numbers still, the UI's face if it is missing.</summary>
     private static readonly string[] Faces = ["Consolas", "Segoe UI"];
@@ -239,6 +242,6 @@ public sealed class StatsOverlay
             characters[index] = (char)(FirstPrintable + index);
         }
 
-        return new string(characters);
+        return new string(characters) + RecorderMarks;
     }
 }
