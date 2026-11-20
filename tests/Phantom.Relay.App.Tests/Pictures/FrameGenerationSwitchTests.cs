@@ -7,6 +7,8 @@ namespace Phantom.Relay.App.Tests.Pictures;
 
 public sealed class FrameGenerationSwitchTests
 {
+    private const double ThirtyFps = 30;
+
     [Fact]
     public void F4_cycles_from_the_profiles_LSFG_to_NVIDIA_FRUC_to_off_and_back_to_LSFG()
     {
@@ -15,12 +17,12 @@ public sealed class FrameGenerationSwitchTests
         Assert.Same(FrameGeneration.QualityDoubled, choice.Follow(FrameGeneration.QualityDoubled));
         Assert.False(choice.Changed);
         Assert.Equal(FrameGeneration.QualityDoubled with { Generator = FrameGenerator.NvidiaFruc }, choice.Cycle());
-        Assert.Equal("NVIDIA FRUC x2", choice.Describe());
+        Assert.Equal("NVIDIA FRUC x2", choice.Describe(0));
 
         Assert.Same(FrameGeneration.Off, choice.Cycle());
-        Assert.Equal("off", choice.Describe());
+        Assert.Equal("off", choice.Describe(ThirtyFps));
         Assert.Equal(FrameGeneration.QualityDoubled, choice.Cycle());
-        Assert.Equal("LSFG x2 quality, flow 1.00", choice.Describe());
+        Assert.Equal("LSFG x2 (quality, flow 1.00)", choice.Describe(0));
         Assert.True(choice.Changed);
     }
 
@@ -30,10 +32,10 @@ public sealed class FrameGenerationSwitchTests
         var choice = new FrameGenerationSwitch();
         choice.Follow(FrameGeneration.QualityDoubled);
 
-        Assert.Equal("LSFG x2 performance, flow 1.00", Describe(choice.Next(), choice));
-        Assert.Equal("LSFG x2 quality, flow 0.50", Describe(choice.Next(), choice));
-        Assert.Equal("LSFG x2 performance, flow 0.50", Describe(choice.Next(), choice));
-        Assert.Equal("LSFG x2 quality, flow 1.00", Describe(choice.Next(), choice));
+        Assert.Equal("LSFG x2 (performance, flow 1.00)", Describe(choice.Next(), choice));
+        Assert.Equal("LSFG x2 (quality, flow 0.50)", Describe(choice.Next(), choice));
+        Assert.Equal("LSFG x2 (performance, flow 0.50)", Describe(choice.Next(), choice));
+        Assert.Equal("LSFG x2 (quality, flow 1.00)", Describe(choice.Next(), choice));
     }
 
     [Fact]
@@ -52,7 +54,7 @@ public sealed class FrameGenerationSwitchTests
         var fruc = FrameGeneration.QualityDoubled with { Generator = FrameGenerator.NvidiaFruc, Multiplier = 3 };
 
         Assert.Same(fruc, choice.Follow(fruc));
-        Assert.Equal("NVIDIA FRUC x3", choice.Describe());
+        Assert.Equal("NVIDIA FRUC x3 → 90 fps", choice.Describe(ThirtyFps));
         Assert.Same(FrameGeneration.Off, choice.Cycle());
         Assert.Equal((FrameGenerator.Lsfg, 3), (choice.Cycle().Generator, choice.Current.Multiplier));
     }
@@ -71,6 +73,33 @@ public sealed class FrameGenerationSwitchTests
     }
 
     [Fact]
+    public void F8_steps_x2_x3_x4_and_back_for_the_generator_that_runs()
+    {
+        var choice = new FrameGenerationSwitch();
+        choice.Follow(FrameGeneration.QualityDoubled);
+
+        Assert.Equal(3, choice.NextMultiplier().Multiplier);
+        Assert.Equal("LSFG x3 → 90 fps (quality, flow 1.00)", choice.Describe(ThirtyFps));
+        Assert.Equal(4, choice.NextMultiplier().Multiplier);
+        Assert.Equal("LSFG x4 → 120 fps (quality, flow 1.00)", choice.Describe(ThirtyFps));
+
+        choice.Cycle();
+        Assert.Equal("NVIDIA FRUC x4 → 120 fps", choice.Describe(ThirtyFps));
+        Assert.Equal((FrameGenerator.NvidiaFruc, 2), (choice.NextMultiplier().Generator, choice.Current.Multiplier));
+    }
+
+    [Fact]
+    public void F8s_multiplier_holds_for_the_session_across_profiles_and_F8_turns_frame_generation_on()
+    {
+        var choice = new FrameGenerationSwitch();
+        choice.Follow(FrameGeneration.Off);
+
+        Assert.Equal((true, 3), (choice.NextMultiplier().IsOn, choice.Current.Multiplier));
+        Assert.Equal(3, choice.Follow(FrameGeneration.QualityDoubled).Multiplier);
+        Assert.Equal(3, choice.Follow(FrameGeneration.QualityDoubled with { Multiplier = 4 }).Multiplier);
+    }
+
+    [Fact]
     public void A_new_profile_starts_from_its_own_setting()
     {
         var choice = new FrameGenerationSwitch();
@@ -85,6 +114,6 @@ public sealed class FrameGenerationSwitchTests
     {
         Assert.True(settings.IsOn);
 
-        return choice.Describe();
+        return choice.Describe(0);
     }
 }

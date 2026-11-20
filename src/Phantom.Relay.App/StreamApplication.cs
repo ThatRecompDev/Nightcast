@@ -30,7 +30,8 @@ namespace Phantom.Relay.App;
 /// title; a keyboard and mouse profile locks the mouse to the window while it has the focus (F10 frees or takes it).
 /// F3 shows the stats: as a small block over the window's top-left corner (<see cref="StatsOverlay"/>), short in the
 /// window's title and in full in the log, each rebuilt only when a new snapshot arrives. F4 cycles frame generation through
-/// off, LSFG and NVIDIA FRUC and F5 steps through LSFG's settings (<see cref="FrameGenerationSwitch"/>), live: the decode thread makes the
+/// off, LSFG and NVIDIA FRUC, F5 steps through LSFG's settings and F8 the multiplier (x2, x3, x4: 60, 90, 120 fps from a
+/// 30 fps game; <see cref="FrameGenerationSwitch"/>), live: the decode thread makes the
 /// new stage before its next new picture, so the render thread never waits; the stats show what runs, and with the
 /// stats hidden the title shows what was chosen. A window larger than the picture shows it upscaled
 /// (<see cref="StreamPicture"/>: FSR 1 unless the profile says otherwise); F6 steps through FSR 1, Lossless Scaling's
@@ -194,7 +195,7 @@ public sealed class StreamApplication : IApplication
                 _overlay.Clear();
                 _picture.TimePasses(_showStats);
             }
-            else if (inputEvent.Key is Key.F4 or Key.F5)
+            else if (inputEvent.Key is Key.F4 or Key.F5 or Key.F8)
             {
                 SwitchGeneration(inputEvent.Key);
             }
@@ -245,7 +246,7 @@ public sealed class StreamApplication : IApplication
         _captureMouse = KeyboardMousePlays();
     }
 
-    /// <summary>F4 cycles frame generation (off, LSFG, NVIDIA FRUC), F5 picks LSFG's next setting; the title shows the choice at once.</summary>
+    /// <summary>F4 cycles frame generation (off, LSFG, NVIDIA FRUC), F5 picks LSFG's next setting, F8 the next multiplier; the title shows the choice at once.</summary>
     private void SwitchGeneration(Key key)
     {
         FrameGeneration settings;
@@ -253,6 +254,10 @@ public sealed class StreamApplication : IApplication
         if (key == Key.F4)
         {
             settings = _generation.Cycle();
+        }
+        else if (key == Key.F8)
+        {
+            settings = _generation.NextMultiplier();
         }
         else
         {
@@ -264,7 +269,7 @@ public sealed class StreamApplication : IApplication
 
         if (_log.IsEnabled(LogLevel.Information))
         {
-            _log.GenerationChosen(_generation.Describe());
+            _log.GenerationChosen(_generation.Describe(0));
         }
     }
 
@@ -375,7 +380,7 @@ public sealed class StreamApplication : IApplication
 
         if (_generation.Changed)
         {
-            title = $"{title} | frame generation {_generation.Describe()}";
+            title = $"{title} | frame generation {_generation.Describe(stats.NewPicturesPerSecond)}";
         }
 
         if (_upscalerChanged)
