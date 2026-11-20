@@ -207,6 +207,66 @@ public sealed class FramePacerTests
         Assert.Equal(refresh240.TotalMilliseconds, pacer.RefreshInterval.TotalMilliseconds, 1);
     }
 
+    [Fact]
+    public void The_refresh_settles_after_sixty_refreshes_and_a_new_pacer_can_start_from_it()
+    {
+        var pacer = new FramePacer(_clock, 4, Source, Refresh60);
+        var refresh240 = TimeSpan.FromSeconds(1.0 / 240);
+
+        var calls = 0;
+
+        for (; calls < 100 && !pacer.RefreshSettled; calls++)
+        {
+            _ = pacer.OnRefresh();
+            _clock.Advance(refresh240);
+        }
+
+        // Sixty gaps measured: sixty-one calls, the first only starting the clock.
+        Assert.InRange(calls, 61, 62);
+
+        var next = new FramePacer(_clock, 4, Source, Refresh60);
+        next.Prime(refresh240);
+        Assert.Equal(refresh240.TotalMilliseconds, next.RefreshInterval.TotalMilliseconds, 2);
+    }
+
+    [Fact]
+    public void At_x4_on_240_hz_each_of_a_pairs_frames_is_shown_in_order_two_refreshes_each()
+    {
+        var refresh240 = TimeSpan.FromSeconds(1.0 / 240);
+        var pacer = Started(4, refresh240);
+        pacer.Prime(refresh240);
+
+        pacer.OnRealFrame(1, Source);
+
+        for (var step = 1; step < 4; step++)
+        {
+            pacer.OnGeneratedReady(1, step);
+        }
+
+        var shown = new List<PacedFrame>();
+
+        for (var refresh = 0; refresh < 8; refresh++)
+        {
+            shown.Add(pacer.OnRefresh());
+            _clock.Advance(refresh240);
+        }
+
+        // Slots due every 8.3 ms: generated 1, 2, 3 and the real frame, each held one refresh after it is shown.
+        Assert.Equal([1, -1, 2, -1, 3, -1, 0, -1], shown.Select(Step));
+        Assert.Equal(PacedFrameKind.Real, shown[6].Kind);
+    }
+
+    // A shown frame's step (the real frame's is 0), or -1 for a hold.
+    private static int Step(PacedFrame frame)
+    {
+        if (frame.Kind == PacedFrameKind.Hold)
+        {
+            return -1;
+        }
+
+        return frame.Step;
+    }
+
     // A pacer that has shown frame 0 and is a source interval later, so frame 1 starts the first pair.
     private FramePacer Started(int multiplier, TimeSpan refresh)
     {

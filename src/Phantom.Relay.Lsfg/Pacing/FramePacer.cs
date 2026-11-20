@@ -34,6 +34,10 @@ public sealed class FramePacer
     private const long RefreshGapNumerator = 3;
     private const long RefreshGapDenominator = 2;
 
+    // Refreshes measured before the refresh estimate is taken as the display's: the first guess's weight is then (7/8)^60,
+    // under a 1/1000 (thirty leave 2 %, which reads a 120 Hz display as 118 Hz). A quarter second at 240 Hz, one at 60 Hz.
+    private const int SettledRefreshes = 60;
+
     // Before the first frame there is none: frame -1.
     private const int NoFrame = -1;
 
@@ -52,6 +56,7 @@ public sealed class FramePacer
     private bool _hasPrevious;
     private int _ready;
     private int _shown = NoSlot;
+    private int _refreshes;
 
     /// <summary>
     /// A pacer for <paramref name="multiplier"/> shown frames per real frame (1 shows real frames only), real frames
@@ -72,7 +77,24 @@ public sealed class FramePacer
     public TimeSpan SourceInterval => TimeSpan.FromSeconds(_interval / (double)_clock.TimestampFrequency);
 
     /// <summary>The display's refresh as measured from the calls to <see cref="OnRefresh"/>.</summary>
-    public TimeSpan RefreshInterval => TimeSpan.FromSeconds(_refresh / (double)_clock.TimestampFrequency);
+    public TimeSpan RefreshInterval => TimeSpan.FromSeconds(Volatile.Read(ref _refresh) / (double)_clock.TimestampFrequency);
+
+    /// <summary>Whether enough refreshes were measured for <see cref="RefreshInterval"/> to be the display's own; any thread.</summary>
+    public bool RefreshSettled => Volatile.Read(ref _refreshes) >= SettledRefreshes;
+
+    /// <summary>
+    /// Starts the refresh estimate at <paramref name="refreshInterval"/>, a display's refresh measured before (by the
+    /// pacer this one replaces), rather than at the guess it was made with; stalls are still judged by the guess.
+    /// </summary>
+    public void Prime(TimeSpan refreshInterval)
+    {
+        var ticks = Ticks(_clock, refreshInterval);
+
+        if (ticks > 0 && ticks <= _slowestRefresh)
+        {
+            _refresh = ticks;
+        }
+    }
 
     /// <summary>Real frame <paramref name="frame"/> arrived now; the pair before it starts, spread over the arrivals' interval.</summary>
     [HotPath]
@@ -210,6 +232,11 @@ public sealed class FramePacer
             return;
         }
 
-        _refresh += (gap - _refresh) / SmoothingDivisor;
+        Volatile.Write(ref _refresh, _refresh + ((gap - _refresh) / SmoothingDivisor));
+
+        if (_refreshes < SettledRefreshes)
+        {
+            Volatile.Write(ref _refreshes, _refreshes + 1);
+        }
     }
 }
