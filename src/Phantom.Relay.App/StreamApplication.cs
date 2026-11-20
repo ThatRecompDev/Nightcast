@@ -41,7 +41,8 @@ namespace Phantom.Relay.App;
 /// and for a few seconds after, its status ("● REC 00:42", where it was saved, the comparison's progress) shows in the
 /// title and over the picture's top-left corner (in the stats' block while F3 shows them).
 /// Fullscreen (F11, Alt+Enter) waits for the engine: its window has no fullscreen call yet. Escape closes the window, except while keyboard and mouse play, when it
-/// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console.
+/// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
+/// the Xbox, failed) closes the window too.
 /// </summary>
 public sealed class StreamApplication : IApplication
 {
@@ -114,6 +115,21 @@ public sealed class StreamApplication : IApplication
 
         Present();
         ShowTitle();
+        QuitWhenEnded();
+    }
+
+    /// <summary>
+    /// A stream that ended without the window (the console took it back, another device took it over, the link failed)
+    /// closes the window: there is nothing left to show, and the head reports why.
+    /// </summary>
+    private void QuitWhenEnded()
+    {
+        var state = _stream.State;
+
+        if (state is StreamState.Failed or StreamState.Stopped)
+        {
+            _window.Quit();
+        }
     }
 
     /// <summary>The console's vibration since the last frame, on the pad being played; the motors stop on time.</summary>
