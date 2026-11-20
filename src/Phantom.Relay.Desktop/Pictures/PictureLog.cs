@@ -23,6 +23,9 @@ internal static partial class PictureLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "NVIDIA FRUC off, LSFG runs instead: {Reason}")]
     public static partial void FrucFallback(this ILogger log, string reason);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Frame generation x{Requested} capped to x{Allowed}: {Reason}")]
+    public static partial void GenerationCapped(this ILogger log, int requested, int allowed, string reason);
+
     [LoggerMessage(Level = LogLevel.Warning, Message = "Frame generation off, the stream plays without it: {Reason}")]
     public static partial void GenerationOff(this ILogger log, string reason);
 

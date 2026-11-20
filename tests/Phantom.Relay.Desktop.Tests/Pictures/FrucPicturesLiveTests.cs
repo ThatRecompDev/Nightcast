@@ -15,7 +15,7 @@ namespace Phantom.Relay.Desktop.Tests.Pictures;
 /// <summary>
 /// NVIDIA FRUC on the decoder's GPU path on this machine (its NVIDIA GPU, the owner's SDK): a 1440p H.264 stream as a
 /// 30 fps game sends it, decoded on the NVIDIA GPU and published, with F4's cycle played through: LSFG, FRUC at x2 and
-/// x4, off, then FRUC again (the decoder's one FRUC, paused and resumed). Generated pictures are handed over and the
+/// x4 (which runs x3, the most FRUC keeps up with), off, then FRUC again (the decoder's one FRUC, paused and resumed). Generated pictures are handed over and the
 /// stats say which generator runs.
 /// </summary>
 [Trait("Category", "Live")]
@@ -48,7 +48,7 @@ public sealed class FrucPicturesLiveTests
 
         Assert.True(Generated(shared, units, FrameGeneration.QualityDoubled, "LSFG x2"));
         Assert.True(Generated(shared, units, Fruc, "NVIDIA FRUC x2"));
-        Assert.True(Generated(shared, units, Fruc with { Multiplier = 4 }, "NVIDIA FRUC x4"));
+        Assert.True(Generated(shared, units, Fruc with { Multiplier = 4 }, "NVIDIA FRUC x3 → 90 fps, x4 capped"));
 
         Assert.False(Generated(shared, units, FrameGeneration.Off, GpuPictureReport.GenerationOff));
         Assert.True(Generated(shared, units, Fruc, "NVIDIA FRUC x2"));

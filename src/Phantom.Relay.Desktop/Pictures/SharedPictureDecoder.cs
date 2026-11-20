@@ -397,12 +397,13 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         return _upscale.Describe();
     }
 
-    // The profile's frame generation, set up again when it or the picture's size changed.
+    // The profile's frame generation, set up again when it or the picture's size changed, or the display's measured
+    // rate calls for another multiplier.
     private void ApplyGeneration(int width, int height)
     {
         var wanted = Volatile.Read(ref _wanted);
 
-        if (ReferenceEquals(wanted, _applied) && width == _frames.Width && height == _frames.Height)
+        if (ReferenceEquals(wanted, _applied) && width == _frames.Width && height == _frames.Height && !_frames.Stale)
         {
             return;
         }
