@@ -63,6 +63,7 @@ public sealed class StreamConnection : IDisposable
     private readonly PadMailbox _pads = new();
     private readonly RumbleMailbox _rumble = new();
     private readonly PictureMailbox _pictures = new();
+    private readonly AccessUnitTap _units = new();
     private readonly CancellationTokenSource _stop = new();
     private readonly StreamStatsMeter _meter;
 
@@ -99,6 +100,12 @@ public sealed class StreamConnection : IDisposable
 
     /// <summary>The newest decoded picture read back to the CPU, for the render thread.</summary>
     public PictureMailbox Pictures => _pictures;
+
+    /// <summary>
+    /// The video's access units as the decode thread takes them, for a listener (a recorder), and the way to ask the
+    /// console for a key frame from any thread.
+    /// </summary>
+    public AccessUnitTap AccessUnits => _units;
 
     /// <summary>The decoder's pictures left on the GPU, when the head's decoder can share them with the renderer; else null.</summary>
     public IGpuPictureSource? GpuPictures => _decoder as IGpuPictureSource;
@@ -184,7 +191,7 @@ public sealed class StreamConnection : IDisposable
     private void Run(string serverId, StreamSettings settings)
     {
         StreamSession? session = null;
-        using var video = new DecodeWorker(_decoder, _pictures, _clock);
+        using var video = new DecodeWorker(_decoder, _pictures, _units, _clock);
         video.Start();
 
         try

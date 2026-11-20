@@ -12,8 +12,9 @@ namespace Phantom.Relay.Stream.Media;
 /// hardware decoder later) and stays the head's to dispose. Each picture goes straight into the
 /// <see cref="PictureMailbox"/>, read back to the CPU; a decoder that is also an <see cref="IGpuPictureProducer"/>
 /// hands its pictures to the renderer on the GPU instead while it shares. The worker times the hand-off, the CPU's
-/// part of getting a decoded picture to the renderer (the read-back, or the GPU copy's queueing). The counters are
-/// safe to read from any thread.
+/// part of getting a decoded picture to the renderer (the read-back, or the GPU copy's queueing). Each unit is offered
+/// to the <see cref="Tap"/> before it is decoded (a recorder's listener queues it). The counters are safe to read from
+/// any thread.
 /// </summary>
 public sealed class DecodeWorker : IDisposable
 {
@@ -21,6 +22,7 @@ public sealed class DecodeWorker : IDisposable
     private readonly IVideoDecoder _decoder;
     private readonly IGpuPictureProducer? _gpu;
     private readonly PictureMailbox _mailbox;
+    private readonly AccessUnitTap _tap;
     private readonly TimeProvider _clock;
     private readonly RepeatClassifier _repeats = new(RepeatSettings.Standard);
     private readonly Thread _thread;
@@ -42,11 +44,13 @@ public sealed class DecodeWorker : IDisposable
     private bool _started;
     private string? _problem;
 
-    public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, TimeProvider clock)
+    /// <summary>The <paramref name="tap"/> sees every unit on this worker's thread and carries key-frame requests to the network thread.</summary>
+    public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, TimeProvider clock)
     {
         _decoder = decoder;
         _gpu = decoder as IGpuPictureProducer;
         _mailbox = mailbox;
+        _tap = tap;
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "Relay video decode" };
     }
@@ -74,6 +78,9 @@ public sealed class DecodeWorker : IDisposable
     public int Height => Volatile.Read(ref _height);
 
     public int DeepestQueue => Volatile.Read(ref _deepestQueue);
+
+    /// <summary>Where a listener sees the units and a key frame is asked for.</summary>
+    public AccessUnitTap Tap => _tap;
 
     /// <summary>The time every decode took, added up, the hand-off included.</summary>
     public TimeSpan DecodeTotal => Duration(Interlocked.Read(ref _decodeTicks));
@@ -160,6 +167,7 @@ public sealed class DecodeWorker : IDisposable
         foreach (var (unit, timestamp, key) in _queue.GetConsumingEnumerable())
         {
             long start = _clock.GetTimestamp();
+            _tap.Offer(unit, timestamp, key);
             var kind = Classify(unit.Length, key);
             _gpu?.Prepare();
             _decoder.Decode(unit, ReadOnlySpan<byte>.Empty, timestamp);

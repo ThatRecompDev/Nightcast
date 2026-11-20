@@ -175,12 +175,16 @@ public sealed class MediaReceiver : IAccessUnitSink
         }
     }
 
-    /// <summary>A PLI (RFC 4585) for the video source, protected as SRTCP, when the depacketizer waits for a keyframe.</summary>
+    /// <summary>
+    /// A PLI (RFC 4585) for the video source, protected as SRTCP, when the depacketizer waits for a keyframe or the
+    /// decode worker's tap asked for one (a recording starting).
+    /// </summary>
     private void RequestKeyframeWhenNeeded()
     {
         long now = _clock.GetTimestamp();
+        bool wanted = _depacketizer.NeedsKeyframe || _video.Tap.KeyframeRequested;
 
-        if (!_depacketizer.NeedsKeyframe || _videoSsrc == 0 || _clock.GetElapsedTime(_lastRequest, now) < KeyframeRequestInterval)
+        if (!wanted || _videoSsrc == 0 || _clock.GetElapsedTime(_lastRequest, now) < KeyframeRequestInterval)
         {
             return;
         }
@@ -192,6 +196,7 @@ public sealed class MediaReceiver : IAccessUnitSink
             _rtcp.Send(_feedback.AsSpan(0, protectedLength));
             Interlocked.Increment(ref _requests);
             _lastRequest = now;
+            _video.Tap.KeyframeAsked();
         }
     }
 }
