@@ -2,6 +2,7 @@
 
 using Phantom.Relay.App.Recording;
 using Phantom.Relay.Desktop.Recording;
+using Phantom.Relay.Stream.Media.Gpu;
 
 namespace Phantom.Relay.Desktop.Tests.Recording;
 
@@ -19,7 +20,7 @@ public sealed class CompareLabelsTests
     [Fact]
     public void Frame_generation_chosen_but_off_counts_as_off()
     {
-        var settings = new RecordingSettings("LSFG off: the pictures are read back", 2, "FSR 1");
+        var settings = new RecordingSettings($"{GpuPictureReport.GenerationOff}: the pictures are read back", 2, "FSR 1");
 
         Assert.Equal(1, CompareLabels.Multiplier(settings));
         Assert.Equal("Relay without frame generation", CompareLabels.Shown(settings));

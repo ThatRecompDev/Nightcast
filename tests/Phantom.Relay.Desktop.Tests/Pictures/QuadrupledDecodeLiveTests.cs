@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using Phantom.Engine.Media.Video;
 using Phantom.Relay.Desktop.Pictures;
+using Phantom.Relay.Desktop.Recording;
 using Phantom.Relay.Lsfg.Tests.Live;
 using Phantom.Relay.Media.Windows;
 using Phantom.Relay.Media.Windows.Tests;
@@ -51,7 +52,7 @@ public sealed class QuadrupledDecodeLiveTests
         var units = SyntheticH264Encoding.Encode(Width, Height, Units);
         var decoder = MediaFoundationH264Decoder.TryOpen(TimeProvider.System, preferHardware: true, FirstAdapter.Nvidia(), out var problem);
         Assert.True(decoder is not null, problem);
-        using var shared = new SharedPictureDecoder(decoder, TimeProvider.System, _log);
+        using var shared = new SharedPictureDecoder(decoder, TimeProvider.System, _log, new ShownPictureTap());
         shared.Offer(FirstAdapter.Nvidia());
 
         shared.Scale(new PictureScale(UpscaleMethod.Ls1, WindowWidth, WindowHeight));
