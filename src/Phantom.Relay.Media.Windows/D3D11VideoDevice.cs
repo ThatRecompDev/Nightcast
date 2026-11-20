@@ -177,7 +177,8 @@ internal sealed unsafe class D3D11VideoDevice : IDisposable
         return true;
     }
 
-    private static bool TryCreateManager(ComWrappers wrappers, nint device, out nint manager, out string? problem)
+    /// <summary>A device manager over <paramref name="device"/> (the decoder's, or for its encoder); the caller releases it.</summary>
+    internal static bool TryCreateManager(ComWrappers wrappers, nint device, out nint manager, out string? problem)
     {
         problem = null;
         var result = NativeMethods.MFCreateDXGIDeviceManager(out var token, out manager);

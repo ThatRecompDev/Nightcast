@@ -17,6 +17,9 @@ public static class AnnexBUnits
     /// <summary>The NAL unit type of a sequence parameter set (H.264 table 7-1).</summary>
     public const int SequenceParameterSetType = 7;
 
+    /// <summary>The NAL unit type of a picture parameter set (H.264 table 7-1).</summary>
+    public const int PictureParameterSetType = 8;
+
     /// <summary>The bits of a NAL unit's first byte that hold its type.</summary>
     public const int NalTypeMask = 0x1F;
 

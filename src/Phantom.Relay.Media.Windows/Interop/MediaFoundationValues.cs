@@ -73,4 +73,40 @@ internal static class MediaFoundationValues
 
     /// <summary>Media Foundation's time unit: 100 nanoseconds.</summary>
     public const long NanosecondsPerUnit = 100;
+
+    /// <summary>Media Foundation's time units in a second.</summary>
+    public const long UnitsPerSecond = 10_000_000;
+
+    /// <summary>MF_SOURCE_READER_FIRST_VIDEO_STREAM (mfreadwrite.h).</summary>
+    public const uint FirstVideoStream = 0xFFFFFFFC;
+
+    /// <summary>MF_SOURCE_READER_ALL_STREAMS (mfreadwrite.h).</summary>
+    public const uint AllStreams = 0xFFFFFFFE;
+
+    /// <summary>MF_SOURCE_READER_MEDIASOURCE (mfreadwrite.h): the source as a whole, for its presentation attributes.</summary>
+    public const uint MediaSource = 0xFFFFFFFF;
+
+    /// <summary>MF_SOURCE_READERF_ENDOFSTREAM (mfreadwrite.h).</summary>
+    public const uint EndOfStream = 0x2;
+
+    /// <summary>MFNominalRange_16_235 (mfobjects.h): limited range.</summary>
+    public const uint LimitedRange = 2;
+
+    /// <summary>MFVideoTransferMatrix_BT709 (mfobjects.h).</summary>
+    public const uint Bt709Matrix = 1;
+
+    /// <summary>MFVideoPrimaries_BT709 (mfobjects.h).</summary>
+    public const uint Bt709Primaries = 2;
+
+    /// <summary>MFVideoTransFunc_709 (mfobjects.h).</summary>
+    public const uint Bt709Transfer = 5;
+
+    /// <summary>eAVEncCommonRateControlMode_UnconstrainedVBR (codecapi.h): the mean bitrate, no peak limit.</summary>
+    public const uint UnconstrainedVbr = 2;
+
+    /// <summary>eAVEncH264VProfile_High (codecapi.h).</summary>
+    public const uint H264HighProfile = 100;
+
+    /// <summary>eAVEncH265VProfile_Main_420_8 (codecapi.h).</summary>
+    public const uint HevcMainProfile = 1;
 }

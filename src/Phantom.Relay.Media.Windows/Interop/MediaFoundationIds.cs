@@ -76,4 +76,49 @@ internal static class MediaFoundationIds
 
     /// <summary>IID_ID3D10Multithread.</summary>
     public static readonly Guid MultithreadInterface = new("9B7E4E00-342C-4106-A19F-4F2704F689F0");
+
+    /// <summary>MFVideoFormat_HEVC (mfapi.h): FOURCC HEVC.</summary>
+    public static readonly Guid HevcSubtype = new("43564548-0000-0010-8000-00AA00389B71");
+
+    /// <summary>MF_MT_MPEG2_LEVEL (mfapi.h): the H.264 level, as level_idc.</summary>
+    public static readonly Guid Mpeg2Level = new("96f66574-11c5-4015-8666-bff516436da7");
+
+    /// <summary>MF_MT_VIDEO_NOMINAL_RANGE (mfapi.h): limited (16-235) or full range.</summary>
+    public static readonly Guid NominalRange = new("c21b8ee5-b956-4071-8daf-325edf5cab11");
+
+    /// <summary>MF_MT_YUV_MATRIX (mfapi.h).</summary>
+    public static readonly Guid YuvMatrix = new("3e23d450-2c75-4d25-a00e-b91670d12327");
+
+    /// <summary>MF_MT_VIDEO_PRIMARIES (mfapi.h).</summary>
+    public static readonly Guid VideoPrimaries = new("dbfbe4d7-0740-4ee0-8192-850ab0e21935");
+
+    /// <summary>MF_MT_TRANSFER_FUNCTION (mfapi.h).</summary>
+    public static readonly Guid TransferFunction = new("5fb0fce9-be5c-4935-a811-ec838f8eed93");
+
+    /// <summary>MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS (mfreadwrite.h): a sink writer may use a hardware encoder.</summary>
+    public static readonly Guid EnableHardwareTransforms = new("a634a91c-822b-41b9-a494-4de4643612b0");
+
+    /// <summary>MF_SINK_WRITER_D3D_MANAGER (mfreadwrite.h): the IMFDXGIDeviceManager a sink writer's encoder uses.</summary>
+    public static readonly Guid SinkWriterDeviceManager = new("ec822da2-e1e9-4b29-a0d8-563c719f5269");
+
+    /// <summary>MFSampleExtension_CleanPoint (mfapi.h): the sample is a key frame.</summary>
+    public static readonly Guid CleanPoint = new("9cdf01d8-a0f0-43ba-b077-eaa06cbd728a");
+
+    /// <summary>MF_PD_DURATION (mfidl.h): a presentation's length, 100 ns units as a VT_UI8.</summary>
+    public static readonly Guid PresentationDuration = new("6c990d33-bb8e-477a-8598-0d5d96fcd88a");
+
+    /// <summary>CODECAPI_AVEncCommonRateControlMode (codecapi.h).</summary>
+    public static readonly Guid RateControlMode = new("1c0608e9-370c-4710-8a58-cb6181c42423");
+
+    /// <summary>CODECAPI_AVEncCommonMeanBitRate (codecapi.h): bits per second.</summary>
+    public static readonly Guid MeanBitRate = new("f7222374-2144-4815-b550-a37f8e12ee52");
+
+    /// <summary>MFT_CATEGORY_VIDEO_ENCODER (mfapi.h).</summary>
+    public static readonly Guid VideoEncoderCategory = new("f79eac7d-e545-4387-bdee-d647d7bde42a");
+
+    /// <summary>MFT_FRIENDLY_NAME_Attribute (mftransform.h): a transform's name ("NVIDIA H.264 Encoder MFT").</summary>
+    public static readonly Guid FriendlyName = new("314ffbae-5b41-4c95-9c19-4e7d586face3");
+
+    /// <summary>MFT_ENUM_HARDWARE_URL_Attribute (mftransform.h): set on hardware transforms only.</summary>
+    public static readonly Guid HardwareUrl = new("2fb866ac-b078-4942-ab6c-003d05cda674");
 }

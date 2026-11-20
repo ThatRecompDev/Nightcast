@@ -3,7 +3,8 @@
   <!-- The Windows hardware H.264 decoder behind Phantom.Engine's IVideoDecoder: Media Foundation's decoder on DXVA,
        reached through source-generated COM (GeneratedComInterface, LibraryImport), so it is NativeAOT-safe. Its
        bitstream and picture helpers (Annex-B units, the SPS's colour, NV12 to planes) are game-agnostic and engine
-       candidates. -->
+       candidates, as are its recording pieces (Recording/: an H.264 remux into MP4, a GPU encoder into MP4, an MP4
+       read back), all through Media Foundation's sink writer and source reader. -->
   <PropertyGroup>
     <IsAotCompatible>true</IsAotCompatible>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>

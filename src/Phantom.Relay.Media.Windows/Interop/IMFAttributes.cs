@@ -33,9 +33,11 @@ internal unsafe partial interface IMFAttributes
     [PreserveSig]
     int GetGuid(in Guid key, out Guid value);
 
-    void GetStringLength();
+    [PreserveSig]
+    int GetStringLength(in Guid key, out uint length);
 
-    void GetString();
+    [PreserveSig]
+    int GetString(in Guid key, char* value, uint size, out uint length);
 
     void GetAllocatedString();
 
@@ -68,9 +70,11 @@ internal unsafe partial interface IMFAttributes
 
     void SetString();
 
-    void SetBlob();
+    [PreserveSig]
+    int SetBlob(in Guid key, byte* buffer, uint size);
 
-    void SetUnknown();
+    [PreserveSig]
+    int SetUnknown(in Guid key, nint value);
 
     void LockStore();
 

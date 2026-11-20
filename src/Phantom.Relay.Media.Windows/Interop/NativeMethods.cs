@@ -4,10 +4,14 @@ using System.Runtime.InteropServices;
 
 namespace Phantom.Relay.Media.Windows.Interop;
 
-/// <summary>The flat functions of Media Foundation (mfplat), COM (ole32) and D3D11, through source-generated imports.</summary>
+/// <summary>
+/// The flat functions of Media Foundation (mfplat, and mfreadwrite for files), COM (ole32) and D3D11, through
+/// source-generated imports.
+/// </summary>
 internal static partial class NativeMethods
 {
     private const string MediaFoundation = "mfplat.dll";
+    private const string ReadWrite = "mfreadwrite.dll";
     private const string Com = "ole32.dll";
     private const string Direct3D11 = "d3d11.dll";
     private const string Dxgi = "dxgi.dll";
@@ -37,6 +41,18 @@ internal static partial class NativeMethods
 
     [LibraryImport(MediaFoundation)]
     internal static partial int MFCreateDXGIDeviceManager(out uint resetToken, out nint manager);
+
+    [LibraryImport(MediaFoundation)]
+    internal static partial int MFCreateAttributes(out nint attributes, uint initialSize);
+
+    [LibraryImport(MediaFoundation)]
+    internal static partial int MFCreateDXGISurfaceBuffer(in Guid interfaceId, nint surface, uint subresource, int bottomUpWhenLinear, out nint buffer);
+
+    [LibraryImport(ReadWrite, StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int MFCreateSinkWriterFromURL(string url, nint byteStream, nint attributes, out nint writer);
+
+    [LibraryImport(ReadWrite, StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int MFCreateSourceReaderFromURL(string url, nint attributes, out nint reader);
 
     [LibraryImport(Com)]
     internal static partial int CoInitializeEx(nint reserved, uint apartment);
