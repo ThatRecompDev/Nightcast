@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Phantom.Engine.Content.Storage;
 using Phantom.Relay.Xbox.Input;
 using Phantom.Relay.Xbox.Session;
@@ -81,6 +82,24 @@ public sealed class ProfileTests
         Assert.Equal(StreamResolution.P1440, settings.Resolution);
         Assert.Equal("tizen", settings.OsName);
         Assert.Equal(FrameGenerationMode.Off, StreamProfile.Default.FrameGeneration.Mode);
+    }
+
+    [Fact]
+    public void A_profile_kept_before_the_generator_could_be_chosen_runs_LSFG_and_one_with_NVIDIA_FRUC_keeps_it()
+    {
+        var memory = new MemoryPersistentStore();
+        var store = new ProfileStore(memory);
+        store.Save(Gta with { FrameGeneration = Gta.FrameGeneration with { Generator = FrameGenerator.NvidiaFruc } });
+        string json = Encoding.UTF8.GetString(memory.Read("profile.GTA_VI")!);
+
+        Assert.Contains("\"generator\": \"NvidiaFruc\"", json, StringComparison.Ordinal);
+        Assert.Equal(FrameGenerator.NvidiaFruc, Assert.Single(store.LoadAll()).FrameGeneration.Generator);
+
+        var older = Regex.Replace(json, ",\\s*\"generator\": \"NvidiaFruc\"", string.Empty);
+        memory.Write("profile.GTA_VI", Encoding.UTF8.GetBytes(older));
+
+        Assert.DoesNotContain("generator", older, StringComparison.Ordinal);
+        Assert.Equal(FrameGenerator.Lsfg, Assert.Single(new ProfileStore(memory).LoadAll()).FrameGeneration.Generator);
     }
 
     [Fact]

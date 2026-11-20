@@ -4,11 +4,17 @@ namespace Phantom.Relay.Profiles;
 
 /// <summary>
 /// Frame generation for a game: the mode (off, or Lossless Scaling's quality or performance shaders), how many frames
-/// are shown per new picture (x2: a 30 fps game at 60; up to x4), the rate they are shown at (0: the display's own) and
-/// the fraction of the picture's size motion is estimated at (lower is faster and coarser). Off by default; it costs
-/// about one source frame of latency by its nature (docs/architecture/lsfg.md).
+/// are shown per new picture (x2: a 30 fps game at 60; up to x4), the rate they are shown at (0: the display's own),
+/// the fraction of the picture's size motion is estimated at (lower is faster and coarser; LSFG's) and the generator
+/// (LSFG, or NVIDIA's FRUC, which has no shader sets or flow scale of its own). Off by default; it costs about one
+/// source frame of latency by its nature (docs/architecture/lsfg.md).
 /// </summary>
-public sealed record FrameGeneration(FrameGenerationMode Mode, int Multiplier, int TargetHz, float FlowScale = FrameGeneration.FullFlow)
+public sealed record FrameGeneration(
+    FrameGenerationMode Mode,
+    int Multiplier,
+    int TargetHz,
+    float FlowScale = FrameGeneration.FullFlow,
+    FrameGenerator Generator = FrameGenerator.Lsfg)
 {
     /// <summary>One generated frame per new picture: x2.</summary>
     public const int Doubled = 2;
