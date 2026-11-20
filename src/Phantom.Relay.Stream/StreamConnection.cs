@@ -361,7 +361,7 @@ public sealed class StreamConnection : IDisposable
 
         if (channels is not null && channels.HasEnded)
         {
-            return "the console closed the stream";
+            return $"the console closed the stream ({channels.EndReason})";
         }
 
         string? decoder = video.Problem;

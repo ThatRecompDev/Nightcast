@@ -67,6 +67,12 @@ public sealed class SctpAssociation
 
     public SctpCloseReason CloseReason { get; private set; }
 
+    /// <summary>The first error cause code of the peer's ABORT (RFC 9260 section 3.3.10); 0 when it gave none or did not abort.</summary>
+    public ushort PeerAbortCause { get; private set; }
+
+    /// <summary>Data retransmission timeouts in a row; a high count before a close means the peer stopped acknowledging.</summary>
+    public int TimeoutsInARow => _sender.ErrorCount;
+
     /// <summary>True when the peer announced FORWARD TSN, so partially reliable messages can be given up.</summary>
     public bool PeerSupportsPartialReliability => _peer.ForwardTsn;
 
@@ -217,7 +223,7 @@ public sealed class SctpAssociation
             case SctpFormat.Heartbeat:
                 return OnHeartbeat(value);
             case SctpFormat.Abort:
-                return OnAbort();
+                return OnAbort(value);
             case SctpFormat.Shutdown:
                 return OnShutdown(value, now);
             case SctpFormat.ShutdownAck:
@@ -375,8 +381,14 @@ public sealed class SctpAssociation
         return true;
     }
 
-    private bool OnAbort()
+    /// <summary>The peer aborts: its first error cause (RFC 9260 section 3.3.10) is kept for the report.</summary>
+    private bool OnAbort(ReadOnlySpan<byte> value)
     {
+        if (value.Length >= sizeof(ushort))
+        {
+            PeerAbortCause = BinaryPrimitives.ReadUInt16BigEndian(value);
+        }
+
         Close(SctpCloseReason.AbortedByPeer);
 
         return false;

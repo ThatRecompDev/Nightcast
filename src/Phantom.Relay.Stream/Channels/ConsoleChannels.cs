@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Org.BouncyCastle.Tls;
@@ -73,6 +74,14 @@ public sealed class ConsoleChannels
 
     /// <summary>True once the association was established and has closed again: the console ended the stream.</summary>
     public bool HasEnded => _established && _association.State == SctpAssociationState.Closed;
+
+    /// <summary>
+    /// How the association ended, for the failure message: the close reason, the ABORT's cause code when the console
+    /// gave one (RFC 9260 section 3.3.10: 12 user-initiated, 13 protocol violation), and the data timeouts in a row.
+    /// </summary>
+    public string EndReason => string.Create(
+        CultureInfo.InvariantCulture,
+        $"SCTP {_association.CloseReason}, abort cause {_association.PeerAbortCause}, {_association.TimeoutsInARow} data timeouts in a row");
 
     /// <summary>Starts the association; the channels are asked for once it is established.</summary>
     public void Open()

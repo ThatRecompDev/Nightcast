@@ -96,6 +96,10 @@ public sealed class SctpHandshakeTests
         Assert.Equal(SctpCloseReason.Aborted, pair.Client.CloseReason);
         Assert.Equal(SctpAssociationState.Closed, pair.Server.State);
         Assert.Equal(SctpCloseReason.AbortedByPeer, pair.Server.CloseReason);
+
+        // This side's ABORT carries no error cause, so the peer reads none.
+        Assert.Equal(0, pair.Server.PeerAbortCause);
+        Assert.Equal(0, pair.Server.TimeoutsInARow);
     }
 
     [Fact]
