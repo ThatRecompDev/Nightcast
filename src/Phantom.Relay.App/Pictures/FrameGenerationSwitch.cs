@@ -6,11 +6,11 @@ using Phantom.Relay.Profiles;
 namespace Phantom.Relay.App.Pictures;
 
 /// <summary>
-/// The frame generation the running stream asks for, as the profile sets it and the player changes it live: F4 turns it
-/// off or on again (<see cref="Toggle"/>), F5 steps through a small set of settings (<see cref="Next"/>): the quality
-/// shaders, the performance ones, each with motion estimated on the whole picture then on half of it. A setting keeps
-/// the profile's multiplier. A new profile (another title) starts from its own setting again (<see cref="Follow"/>).
-/// Render thread only.
+/// The frame generation the running stream asks for, as the profile sets it and the player changes it live: F4 cycles
+/// through off, Lossless Scaling's frame generation and NVIDIA's FRUC (<see cref="Cycle"/>), F5 steps through a small
+/// set of LSFG's settings (<see cref="Next"/>): the quality shaders, the performance ones, each with motion estimated on
+/// the whole picture then on half of it. Each keeps the profile's multiplier. A new profile (another title) starts from
+/// its own setting again (<see cref="Follow"/>). Render thread only.
 /// </summary>
 public sealed class FrameGenerationSwitch
 {
@@ -68,16 +68,30 @@ public sealed class FrameGenerationSwitch
         return Current;
     }
 
-    /// <summary>F4: off when on, else on again with the setting chosen last.</summary>
-    public FrameGeneration Toggle()
+    /// <summary>F4: off → LSFG → NVIDIA FRUC → off, with the setting chosen last.</summary>
+    public FrameGeneration Cycle()
     {
-        _on = !_on;
         Changed = true;
+
+        if (!_on)
+        {
+            _on = true;
+            _chosen = _chosen with { Generator = FrameGenerator.Lsfg };
+        }
+        else if (_chosen.Generator == FrameGenerator.Lsfg)
+        {
+            _chosen = _chosen with { Generator = FrameGenerator.NvidiaFruc };
+        }
+        else
+        {
+            _on = false;
+            _chosen = _chosen with { Generator = FrameGenerator.Lsfg };
+        }
 
         return Current;
     }
 
-    /// <summary>F5: the next of the settings (the first when the current is none of them), turned on.</summary>
+    /// <summary>F5: the next of LSFG's settings (the first when the current is none of them), turned on with LSFG.</summary>
     public FrameGeneration Next()
     {
         var next = Settings[(IndexOf(_chosen) + 1) % Settings.Length];
@@ -88,12 +102,17 @@ public sealed class FrameGenerationSwitch
         return Current;
     }
 
-    /// <summary>"x2 quality, flow 1.0", or "off".</summary>
+    /// <summary>"LSFG x2 quality, flow 1.00", "NVIDIA FRUC x2", or "off".</summary>
     public string Describe()
     {
         if (!_on)
         {
             return OffLabel;
+        }
+
+        if (_chosen.Generator == FrameGenerator.NvidiaFruc)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"NVIDIA FRUC x{_chosen.ClampedMultiplier}");
         }
 
         var mode = QualityName;
@@ -103,7 +122,7 @@ public sealed class FrameGenerationSwitch
             mode = PerformanceName;
         }
 
-        return string.Create(CultureInfo.InvariantCulture, $"x{_chosen.ClampedMultiplier} {mode}, flow {_chosen.ClampedFlowScale:F2}");
+        return string.Create(CultureInfo.InvariantCulture, $"LSFG x{_chosen.ClampedMultiplier} {mode}, flow {_chosen.ClampedFlowScale:F2}");
     }
 
     // Which of the settings this is by its shaders and flow (the multiplier aside); -1 for none.

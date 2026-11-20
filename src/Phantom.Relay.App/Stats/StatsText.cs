@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+// Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Globalization;
 using System.Text;
@@ -182,7 +182,7 @@ public static class StatsText
         return path;
     }
 
-    /// <summary>The text before its first colon: "LSFG off" of "LSFG off: why".</summary>
+    /// <summary>The text before its first colon: "frame generation off" of "frame generation off: why".</summary>
     private static string Before(string text)
     {
         int colon = text.IndexOf(':', StringComparison.Ordinal);
