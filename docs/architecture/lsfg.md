@@ -196,7 +196,22 @@ The desktop head runs it (the Heads layer may reference Lsfg; `Pictures/SharedPi
   multiplier kept); a new title starts from its profile again. The choice goes through `IGpuPictureSource.Use` like the
   profile's, so the decode thread makes the new stage before its next new picture (a quarter of a second, the decode
   thread's alone: the render thread never waits, the stream catches up after it). With the stats hidden the window's
-  title shows the choice (`Phantom.Relay | frame generation x2 performance, flow 0.50`).
+  title shows the choice (`Phantom.Relay | frame generation LSFG x2 → 60 fps (performance, flow 0.50)`).
+- **x3 and x4: the 120 fps mode.** F8 steps the multiplier x2 → x3 → x4 → x2 (60, 90 and 120 fps from a 30 fps game) for
+  whichever generator runs, turning frame generation on; the profile's multiplier (GTA: x2) is the default and F8's
+  choice holds for the rest of the session, across titles. The stats show the target, the game's measured rate times
+  the multiplier: `LSFG x4 → 120 fps (quality, flow 1.00) 1.9 ms`. The pacer measures the display's refresh from the
+  render thread's own refreshes (60 of them settle it: thirty would still carry 2 % of the first 60 Hz guess and read a
+  120 Hz display as 118 Hz); a new pacer starts from that measure. When the display refreshes slower than the target
+  (`DisplayRate`: x4 of a 30 fps game on a 60 Hz display), the multiplier is capped to what it shows and the stats say
+  so (`LSFG x2 → 60 fps (…), x4 capped: 60 Hz display`); a display measured after the stage was made sets it up
+  again. NVIDIA FRUC keeps up to x3 ([nvidia-fruc](nvidia-fruc.md)): x4 asked of it runs x3, said the same way. The ring
+  holds 2 x 4 + 1 slots, enough for x4 by construction (a group being written, one waiting, one on screen):
+  `QuadrupledPacingTests` publishes x4 groups every 33.3 ms into it and takes them at 240 Hz, on a manual clock and on
+  the real one, and every frame shows once, in order, two refreshes apart (200 of 200 on the real clock). At the
+  stream's pace with LS1 to a 4K window, the decode thread spends 1.2 ms a new picture at LSFG x4
+  (`QuadrupledDecodeLiveTests`). LSFG's GPU time a new picture, quality, at full flow: 0.75 ms at x2, 1.52 at x3,
+  1.76 at x4 (`FrucCostLiveTests`, frames back to back).
 
 Measured on the owner's RTX 4090 (2026-11-19, `LsfgFrameStageLiveTests` and a window drawing a synthetic 1440p
 30 fps stream through the engine's device): x2 quality at full flow costs 0.83 ms of GPU a new picture (both colour

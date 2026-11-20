@@ -52,8 +52,11 @@ the outputs, the next copy. The input written for the next picture is the other 
 is never overwritten while it is read.
 
 But `NvOFFRUCProcess` itself holds the calling thread until its work is done (a CUDA stream synchronise inside): the
-decode thread spends about 4 ms per generated frame in it. At a 30 fps source (33 ms between new pictures) x2 and x3
-fit easily; x4 takes about 12 ms of the 33.
+decode thread spends about 4 ms per generated frame in it when frames come back to back, and about three times that at
+the stream's pace (the GPU idles between pictures): 12, 21 and 30 ms a new picture at x2, x3 and x4 in
+`QuadrupledDecodeLiveTests` (30 new pictures a second, LS1 on or off alike). x4 falls behind the 33 ms between new
+pictures, so x4 asked of FRUC runs x3, and the stats say so (`NVIDIA FRUC x3 → 90 fps, x4 capped: NVIDIA FRUC keeps
+up to x3`).
 
 ## What the library allows (measured, SDK 5.0.7, driver 617.14)
 
@@ -69,10 +72,10 @@ fit easily; x4 takes about 12 ms of the 33.
 - **Several frames per pair work**, though the guide says not to call Process twice with one frame: the same frame
   passed again with a later output time gives that frame exactly (x4's frames at a quarter, a half and three quarters,
   each within 0.04 luma levels of the ideal), and the next pair's frame is right after it. Each such call is a full
-  run (about 4 ms), and FRUC writes a line to its own log for each ("Execution is out of order"), so x4 adds about two
-  lines a picture: some 7 KB a second at a 30 fps source.
+  run (about 4 ms), and FRUC writes a line to its own log for each ("Execution is out of order"), so x3 (the most the
+  stream runs, below) adds a line a picture: some 3.5 KB a second at a 30 fps source.
 - FRUC writes its errors to `%ProgramData%\NVIDIA Corporation\NvOFFRUC\logFRUCError.txt`; it is the first place to
-  look when a call returns `NvOFFRUC_ERR_GENERIC`. That file grows while x3 or x4 runs; it may be deleted.
+  look when a call returns `NvOFFRUC_ERR_GENERIC`. That file grows while x3 runs; it may be deleted.
 
 ## Measurements
 
@@ -103,7 +106,7 @@ long):
 | LSFG quality, CPU in the call | 0.10 ms | 0.14 ms | 0.18 ms |
 
 So FRUC is the sharper generator on this case and LSFG the far cheaper one; FRUC costs a few ms of the decode
-thread per picture, LSFG almost none. In the desktop's live test (`FrucPicturesLiveTests`, a synthetic stream through
+thread per picture (12 ms at x2 at the stream's pace), LSFG almost none (1.2 ms at x4 with LS1). In the desktop's live test (`FrucPicturesLiveTests`, a synthetic stream through
 the real decoder) the stage's GPU time, conversions included and the first pictures counted, read 7 to 10 ms at x2.
 
 ## Switching and falling back
