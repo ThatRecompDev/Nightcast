@@ -190,8 +190,8 @@ The desktop head runs it (the Heads layer may reference Lsfg; `Pictures/SharedPi
   the new picture itself (M - 1) / M of a source interval later.
 - **When it cannot run** (Lossless Scaling not installed, shaders that do not fit, a ring the video processor cannot
   write, the pictures read back), it logs why once and the stream plays without it. The F3 stats show
-  `LSFG x2 (quality, flow 1.00) 0.8 ms` (the GPU time of a new picture's whole work) or `LSFG off: <reason>`.
-- **Live switching.** F4 turns it off or on again for the running stream, F5 steps through x2 quality, x2
+  `LSFG x2 (quality, flow 1.00) 0.8 ms` (the GPU time of a new picture's whole work) or `frame generation off: <reason>`.
+- **Live switching.** F4 cycles off, LSFG and NVIDIA FRUC ([nvidia-fruc](nvidia-fruc.md)) for the running stream, F5 steps through x2 quality, x2
   performance, x2 quality at flow 0.5 and x2 performance at flow 0.5 (`FrameGenerationSwitch`, the profile's
   multiplier kept); a new title starts from its profile again. The choice goes through `IGpuPictureSource.Use` like the
   profile's, so the decode thread makes the new stage before its next new picture (a quarter of a second, the decode
