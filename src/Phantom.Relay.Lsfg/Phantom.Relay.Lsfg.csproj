@@ -19,6 +19,9 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Phantom.Relay.Lsfg.Tests" />
+    <!-- NVIDIA's FRUC runs on the same device wrapper and GPU timer. -->
+    <InternalsVisibleTo Include="Phantom.Relay.Nvidia" />
+    <InternalsVisibleTo Include="Phantom.Relay.Nvidia.Tests" />
   </ItemGroup>
 
 </Project>

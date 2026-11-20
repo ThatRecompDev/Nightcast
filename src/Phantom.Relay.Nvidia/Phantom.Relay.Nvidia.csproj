@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Optional, Windows-only, off by default: NVIDIA's FRUC (frame rate up-conversion on the optical flow accelerator
+       of a Turing or later GPU) as a second frame generator beside LSFG, on the decoder's D3D11 device. Nothing of
+       NVIDIA's Optical Flow SDK is in this repository: NvOFFRUC.dll and its CUDA runtime are loaded at run time from
+       the owner's own SDK folder, for the owner's personal use. docs/architecture/nvidia-fruc.md -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Phantom.Engine.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The frame-generation seam, the video processor's colour conversions and the GPU timer are LSFG's. -->
+    <ProjectReference Include="../Phantom.Relay.Lsfg/Phantom.Relay.Lsfg.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Nvidia.Tests" />
+  </ItemGroup>
+
+</Project>
