@@ -107,6 +107,40 @@ public sealed unsafe class Mp4VideoEncoderLiveTests
         Assert.Equal(0, allocated);
     }
 
+    [Fact]
+    public void The_copy_into_the_pool_costs_the_gpu_a_few_hundredths_of_a_millisecond()
+    {
+        const int Copies = 30;
+
+        var wrappers = new StrategyBasedComWrappers();
+        using var device = D3D11VideoDevice.TryCreate(wrappers, 0, out var problem);
+        Assert.True(device is not null, problem);
+        var source = FlatTexture(wrappers, device.Device, Lumas[0]);
+
+        var path = RecordingTestFolder.File(nameof(Mp4VideoEncoderLiveTests), "copy-cost.mp4");
+        using var encoder = Mp4VideoEncoder.TryCreate(device.Device, path, new VideoEncoderSettings(Width, Height, FramesPerSecond, VideoEncoderSettings.HighBitrate, RecordedVideoCodec.H264), out problem);
+        Assert.True(encoder is not null, problem);
+        using var stopwatch = new GpuStopwatch(wrappers, device.Device);
+        var times = new List<double>();
+
+        for (var copy = 0; copy < Copies; copy++)
+        {
+            stopwatch.Begin();
+            Assert.True(encoder.TryCopy(source, 0, out var slot));
+            var time = stopwatch.End();
+            encoder.Abandon(slot);
+
+            if (time is not null)
+            {
+                times.Add(time.Value);
+            }
+        }
+
+        ComObjects.Release(ref source);
+        _output.WriteLine($"GPU time of a {Width}x{Height} copy into the pool: median {times.Order().ElementAt(times.Count / 2):F4} ms, worst {times.Max():F4} ms over {times.Count}");
+        Assert.NotEmpty(times);
+    }
+
     private static void AssertLumas(List<byte> decoded)
     {
         Assert.Equal(Frames, decoded.Count);
