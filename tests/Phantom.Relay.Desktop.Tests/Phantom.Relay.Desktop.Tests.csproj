@@ -26,4 +26,10 @@
     <Compile Include="../Phantom.Relay.Lsfg.Tests/Live/TestOutputLogger.cs" Link="Live/TestOutputLogger.cs" />
   </ItemGroup>
 
+  <!-- The recording's live checks write where the encoder's do and decode the shown file the same way. -->
+  <ItemGroup>
+    <Compile Include="../Phantom.Relay.Media.Windows.Tests/Recording/RecordingTestFolder.cs" Link="Live/RecordingTestFolder.cs" />
+    <Compile Include="../Phantom.Relay.Media.Windows.Tests/Recording/DecodedLuma.cs" Link="Live/DecodedLuma.cs" />
+  </ItemGroup>
+
 </Project>
