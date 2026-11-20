@@ -49,7 +49,7 @@ public sealed class LsfgGeneratorLiveTests
     public void The_frame_between_two_1440p_frames_is_plausible(bool performance, float flowScale)
     {
         using var catalog = OpenCatalog();
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var previousPixels = Picture(0, 0);
         var currentPixels = Picture(Shift, Brighten);
 

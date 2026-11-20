@@ -12,7 +12,7 @@ public sealed class Nv12ToRgbaConverterLiveTests
     [Fact]
     public void Limited_range_grey_levels_come_out_as_full_range_rgb()
     {
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var planes = new byte[Width * Height * 3 / 2];
 
         // Left half luma 16 (black), right half 235 (white); chroma neutral.

@@ -32,7 +32,7 @@ public sealed class LsfgFrameStageLiveTests
     [Fact]
     public void Rgba_goes_back_to_limited_range_nv12_in_a_shared_slot()
     {
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var nv12 = device.CreateNv12(Width, Height, Halves(16, 235));
         using var toRgba = Nv12ToRgbaConverter.TryCreate(device.Device, Width, Height, out var problem);
         using var toNv12 = RgbaToNv12Converter.TryCreate(device.Device, Width, Height, out problem);
@@ -52,7 +52,7 @@ public sealed class LsfgFrameStageLiveTests
     [Fact]
     public void A_frame_is_generated_between_two_pictures_and_written_into_a_shared_slot()
     {
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var previous = device.CreateNv12(Width, Height, Moving(0));
         var current = device.CreateNv12(Width, Height, Moving(Shift));
         var settings = LsfgSettings.Default with { Enabled = true, LibraryPath = Environment.GetEnvironmentVariable("LSFG_LOSSLESS_DLL") };

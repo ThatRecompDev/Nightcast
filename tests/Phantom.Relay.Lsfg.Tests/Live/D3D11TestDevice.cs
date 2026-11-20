@@ -18,9 +18,11 @@ internal sealed unsafe class D3D11TestDevice : IDisposable
     private nint _device;
     private nint _context;
 
-    public D3D11TestDevice()
+    /// <summary>A device on <paramref name="adapter"/> (an IDXGIAdapter the caller keeps), or the default one for 0.</summary>
+    public D3D11TestDevice(nint adapter)
     {
-        var result = NativeMethods.D3D11CreateDevice(0, MediaFoundationValues.HardwareDriver, 0, MediaFoundationValues.VideoSupport | BgraSupport, 0, 0, MediaFoundationValues.D3D11SdkVersion, out _device, out _, out _context);
+        var driver = adapter == 0 ? MediaFoundationValues.HardwareDriver : Direct3D11Values.UnknownDriver;
+        var result = NativeMethods.D3D11CreateDevice(adapter, driver, 0, MediaFoundationValues.VideoSupport | BgraSupport, 0, 0, MediaFoundationValues.D3D11SdkVersion, out _device, out _, out _context);
         Assert.True(result >= 0, $"D3D11CreateDevice failed (0x{result:X8})");
         _deviceApi = ComObjects.Wrap<ID3D11Device>(_wrappers, _device);
         _contextApi = ComObjects.Wrap<ID3D11DeviceContext>(_wrappers, _context);

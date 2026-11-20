@@ -54,7 +54,7 @@ public sealed class LosslessUpscalerLiveTests
     public void Every_upscaling_shader_has_its_shape(LosslessUpscalerKind kind, int level)
     {
         using var catalog = OpenCatalog();
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var settings = LosslessUpscalerSettings.Default with { Kind = kind, Level = level };
 
         using var upscaler = LosslessUpscaler.TryCreate(device.Device, catalog, settings, LosslessUpscaleGeometry.Exact(PictureWidth, PictureHeight, TruthWidth, TruthHeight), _log, out var problem);
@@ -67,7 +67,7 @@ public sealed class LosslessUpscalerLiveTests
     public void The_open_choices_measured()
     {
         using var catalog = OpenCatalog();
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var truth = Render(Scene.Chart, TruthWidth, TruthHeight);
         var (input, inputPixels) = Convert(device, Picture(Scene.Chart, Variant.Clean));
         _output.WriteLine($"bilinear: {Score(Bilinear(inputPixels, PictureWidth, PictureHeight, TruthWidth, TruthHeight), truth)}");
@@ -94,7 +94,7 @@ public sealed class LosslessUpscalerLiveTests
     public void The_upscalers_against_bilinear_and_the_truth(Scene scene)
     {
         using var catalog = OpenCatalog();
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var truth = Render(scene, TruthWidth, TruthHeight);
         var directory = Environment.GetEnvironmentVariable("LSFG_UPSCALE_DIR");
 
@@ -133,7 +133,7 @@ public sealed class LosslessUpscalerLiveTests
         const int Width = 3600;
         const int Height = 2025;
         const int SlotHeight = 2026;
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var picture = Picture(Scene.Chart, Variant.Clean);
         var truth = Render(Scene.Chart, Width, Height);
 
@@ -163,7 +163,7 @@ public sealed class LosslessUpscalerLiveTests
     public void The_stage_costs_by_step()
     {
         using var catalog = OpenCatalog();
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var nv12 = device.CreateNv12(PictureWidth, PictureHeight, ToNv12(Picture(Scene.Natural, Variant.Clean), PictureWidth, PictureHeight));
         var slot = device.CreateNv12Target(3600, 2026);
         var geometry = new LosslessUpscaleGeometry(PictureWidth, PictureHeight, 3600, 2025, 3600, 2026);
@@ -219,7 +219,7 @@ public sealed class LosslessUpscalerLiveTests
     public void The_upscalers_cost(int width, int height)
     {
         using var catalog = OpenCatalog();
-        using var device = new D3D11TestDevice();
+        using var device = new D3D11TestDevice(0);
         var (input, _) = Convert(device, Picture(Scene.Natural, Variant.Clean));
         var geometry = new LosslessUpscaleGeometry(PictureWidth, PictureHeight, width, height, (width + 1) & ~1, (height + 1) & ~1);
 
