@@ -16,7 +16,7 @@ namespace Phantom.Relay.Lsfg;
 /// (<see cref="LastGpuMilliseconds"/>). Made from the user's own Lossless.dll, found as
 /// <see cref="LosslessLocator"/> finds it; nothing of it is kept once the shaders are made.
 /// </summary>
-public sealed class LsfgFrameStage : IDisposable
+public sealed class LsfgFrameStage : IFrameGenerationStage
 {
     // Timers in flight: a picture's GPU time is read three pictures later, when the GPU is surely past it.
     private const int Timers = 4;
@@ -48,6 +48,9 @@ public sealed class LsfgFrameStage : IDisposable
 
     /// <summary>The GPU time of the last picture whose time came back, in milliseconds; 0 before any.</summary>
     public double LastGpuMilliseconds { get; private set; }
+
+    /// <summary>Never: a step the device refuses gives no frames for that picture only.</summary>
+    public string? Failure => null;
 
     /// <summary>
     /// The stage for pictures of <paramref name="width"/> x <paramref name="height"/> on <paramref name="device"/> (the
