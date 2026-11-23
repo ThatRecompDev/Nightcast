@@ -54,6 +54,8 @@ namespace Phantom.Relay.Desktop;
 /// <c>--no-feedback</c> turns it off. On Windows the stream starts fullscreen (borderless,
 /// <see cref="BorderlessFullscreen"/>); <c>--windowed</c> starts it as a window. A published build updates itself from
 /// Nightcast's public releases at start, before the window (<see cref="SelfUpdater"/>); <c>--no-update</c> skips it.
+/// <c>--external-frame-generation</c> presents only the game's new pictures from the start, for lsfg-vk (F12 or the
+/// menu switch it live; <see cref="StreamApplication.PresentNewPicturesOnly"/>).
 /// Tokens stay in the user's own store, never in the output.
 /// </summary>
 public static class DesktopProgram
@@ -67,6 +69,9 @@ public static class DesktopProgram
     private const string NoFeedbackArgument = "--no-feedback";
     private const string WindowedArgument = "--windowed";
     private const string NoUpdateArgument = "--no-update";
+
+    /// <summary>Present only the game's new pictures from the start, for lsfg-vk or another external frame generator.</summary>
+    private const string ExternalFrameGenerationArgument = "--external-frame-generation";
 
     /// <summary>Set by gamescope for the programs it runs (SteamOS's Gaming Mode): a browser opened there would cover the window.</summary>
     private const string GamescopeVariable = "GAMESCOPE_WAYLAND_DISPLAY";
@@ -102,7 +107,7 @@ public static class DesktopProgram
     {
         if (!BitrateFeedbackArguments.TryParse(args, out var asked, out string? wrong))
         {
-            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}, {NoUpdateArgument}");
+            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}, {NoUpdateArgument}, {ExternalFrameGenerationArgument}");
 
             return new RunOutcome(Refused, false);
         }
@@ -142,7 +147,7 @@ public static class DesktopProgram
         var choice = new ScreenConsoleChoice();
         var openPage = Environment.GetEnvironmentVariable(GamescopeVariable) is null;
         var setup = new TextSetup(auth, sessions, choice, screen, signIn => SignInCodeHelper.Help(signIn, screen, openPage));
-        var run = new StreamRun(sessions, profiles, settings, feedback, !args.Contains(WindowedArgument), setup, screen, choice, clock);
+        var run = new StreamRun(sessions, profiles, settings, feedback, !args.Contains(WindowedArgument), args.Contains(ExternalFrameGenerationArgument), setup, screen, choice, clock);
 
         return StreamConsole(run);
     }
@@ -263,6 +268,7 @@ public static class DesktopProgram
         var reports = new PadReportPolicy(PadReportSettings.Standard);
         var application = new StreamApplication(parts.Device, parts.Window, connection, new ProfilePadComposer(profile), reports, parts.Fonts, parts.Motors, recorder, parts.Mode, run.Clock, log);
 
+        application.PresentNewPicturesOnly(run.NewPicturesOnly);
         Console.WriteLine(LosslessScalingLine());
         Console.WriteLine($"Streaming {console.Name}, asking for {run.Settings.Resolution}, bitrate feedback {run.Feedback.Describe()}. View+Menu opens the menu; Escape (or View+Menu held) ends.");
         connection.Start(console.ServerId, run.Settings, run.Feedback);

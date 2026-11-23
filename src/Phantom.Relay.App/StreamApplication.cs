@@ -46,7 +46,8 @@ namespace Phantom.Relay.App;
 /// call yet), which hides the cursor. Escape closes the window, except while keyboard and mouse play, when it is the
 /// game's and Shift+Escape closes it. On the pad alone, View and Menu pressed together open Relay's menu (<see cref="PadMenu"/>:
 /// every setting above), and held for two seconds close the window (<see cref="MenuChord"/>). F2 or the menu shows the
-/// picture with bars or stretched on a screen of another shape (<see cref="PictureFit"/>); closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
+/// picture with bars or stretched on a screen of another shape (<see cref="PictureFit"/>). F12 or the menu presents
+/// only the game's new pictures, for an external frame generator (<see cref="PresentNewPicturesOnly"/>). Closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
 /// the Xbox, failed) closes the window too.
 /// </summary>
 public sealed class StreamApplication : IApplication
@@ -54,6 +55,12 @@ public sealed class StreamApplication : IApplication
     private const byte FirstPad = 0;
     private const float Percent = 100f;
     private const int LevelCount = 4;
+
+    /// <summary>
+    /// NOT DATA: the longest a frame waits for a new picture while only new pictures are presented; a stream without
+    /// one for longer (paused, a loading screen that does not move) still shows its window and takes its input.
+    /// </summary>
+    private static readonly TimeSpan NewPictureWait = TimeSpan.FromMilliseconds(100);
 
     private static readonly Vector4 Black = new(0f, 0f, 0f, 1f);
 
@@ -85,6 +92,7 @@ public sealed class StreamApplication : IApplication
     private StreamStats? _shownStats;
     private StreamProfile? _profile;
     private bool _captureMouse;
+    private bool _newPicturesOnly;
 
     /// <summary>
     /// The window's app; <c>motors</c> run the console's vibration on the pads, null where the pads have none; F9 goes to
@@ -109,6 +117,25 @@ public sealed class StreamApplication : IApplication
         _overlay = new StatsOverlay(device, window, fonts, log);
         _recordOverlay = new StatsOverlay(device, window, fonts, log);
         _menuOverlay = new StatsOverlay(device, window, fonts, log);
+    }
+
+    /// <summary>
+    /// Whether a frame is presented only once the game drew a new picture (F12, the menu, the head's
+    /// <c>--external-frame-generation</c>), for an external frame generator (lsfg-vk on SteamOS) that makes the frames
+    /// between the presents it sees: each frame then waits for the next new picture (<see cref="NewPictureSignal"/>,
+    /// at most <see cref="NewPictureWait"/>) before it draws, so the window presents at the game's own rate (30 a
+    /// second for a 30 fps game) and never a repeat. The engine presents every frame it runs, so this paces the frames
+    /// rather than skipping presents: the pads are then read once a picture rather than once a refresh.
+    /// </summary>
+    public void PresentNewPicturesOnly(bool on)
+    {
+        _newPicturesOnly = on;
+        _shownStats = null;
+
+        if (_log.IsEnabled(LogLevel.Information))
+        {
+            _log.NewPicturesOnly(on);
+        }
     }
 
     public void Initialize()
@@ -205,6 +232,11 @@ public sealed class StreamApplication : IApplication
     /// </summary>
     private void Present()
     {
+        if (_newPicturesOnly)
+        {
+            _stream.NewPictures.Wait(NewPictureWait);
+        }
+
         long started = _clock.GetTimestamp();
         var destination = PictureLetterbox.Of(_window.Width, _window.Height, _fit);
         _picture.Take();
@@ -283,6 +315,10 @@ public sealed class StreamApplication : IApplication
             else if (inputEvent.Key == Key.F9)
             {
                 ToggleRecording();
+            }
+            else if (inputEvent.Key == Key.F12)
+            {
+                PresentNewPicturesOnly(!_newPicturesOnly);
             }
             else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
             {
@@ -446,6 +482,9 @@ public sealed class StreamApplication : IApplication
             case MenuItem.RumbleStrength:
                 _rumble.NextGain();
                 break;
+            case MenuItem.NewPicturesOnly:
+                PresentNewPicturesOnly(!_newPicturesOnly);
+                break;
             case MenuItem.Fullscreen:
                 ToggleFullscreen();
                 break;
@@ -484,6 +523,7 @@ public sealed class StreamApplication : IApplication
             MenuItem.PictureFit => FitName(_fit),
             MenuItem.RumbleStrength => string.Create(CultureInfo.InvariantCulture, $"{_rumble.Gain * Percent:0} %"),
             MenuItem.Fullscreen => OnOff(_mode.Fullscreen),
+            MenuItem.NewPicturesOnly => OnOff(_newPicturesOnly),
             MenuItem.Record => _recording ?? "off",
             _ => string.Empty,
         };
@@ -732,6 +772,11 @@ public sealed class StreamApplication : IApplication
         if (_upscalerChanged)
         {
             title = $"{title} | {_picture.Describe(Report().Upscale)}";
+        }
+
+        if (_newPicturesOnly)
+        {
+            title = $"{title} | new pictures only";
         }
 
         return StatsText.Clamp(WithRecording(title));

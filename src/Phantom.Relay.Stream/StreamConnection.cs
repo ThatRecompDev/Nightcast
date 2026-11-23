@@ -1,4 +1,4 @@
-﻿// Copyright (c) 2026 Phantom.Relay. All rights reserved.
+// Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using Microsoft.Extensions.Logging;
 using Org.BouncyCastle.Security;
@@ -67,6 +67,7 @@ public sealed class StreamConnection : IDisposable
     private readonly RumbleMailbox _rumble = new();
     private readonly PictureMailbox _pictures = new();
     private readonly AccessUnitTap _units = new();
+    private readonly NewPictureSignal _newPictures = new();
     private readonly CancellationTokenSource _stop = new();
     private readonly StreamStatsMeter _meter;
 
@@ -109,6 +110,9 @@ public sealed class StreamConnection : IDisposable
     /// console for a key frame from any thread.
     /// </summary>
     public AccessUnitTap AccessUnits => _units;
+
+    /// <summary>Where the render thread waits for the game's next new picture (a window presenting only new pictures).</summary>
+    public NewPictureSignal NewPictures => _newPictures;
 
     /// <summary>The decoder's pictures left on the GPU, when the head's decoder can share them with the renderer; else null.</summary>
     public IGpuPictureSource? GpuPictures => _decoder as IGpuPictureSource;
@@ -188,13 +192,14 @@ public sealed class StreamConnection : IDisposable
     {
         Stop();
         _stop.Dispose();
+        _newPictures.Dispose();
     }
 
     /// <summary>The network thread: the whole session, its errors turned into the failed state, the session always stopped.</summary>
     private void Run(string serverId, StreamSettings settings)
     {
         StreamSession? session = null;
-        using var video = new DecodeWorker(_decoder, _pictures, _units, _clock);
+        using var video = new DecodeWorker(_decoder, _pictures, _units, _newPictures, _clock);
         video.Start();
 
         try

@@ -24,6 +24,7 @@ public sealed class DecodeWorker : IDisposable
     private readonly PictureMailbox _mailbox;
     private readonly AccessUnitTap _tap;
     private readonly TimeProvider _clock;
+    private readonly NewPictureSignal _signal;
     private readonly RepeatClassifier _repeats = new(RepeatSettings.Standard);
     private readonly Thread _thread;
     private readonly int[] _sizes = new int[SizeHistory];
@@ -44,13 +45,18 @@ public sealed class DecodeWorker : IDisposable
     private bool _started;
     private string? _problem;
 
-    /// <summary>The <paramref name="tap"/> sees every unit on this worker's thread and carries key-frame requests to the network thread.</summary>
-    public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, TimeProvider clock)
+    /// <summary>
+    /// The <paramref name="tap"/> sees every unit on this worker's thread and carries key-frame requests to the network
+    /// thread; <paramref name="signal"/> hears of each new picture handed to the renderer.
+    /// </summary>
+    public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, NewPictureSignal signal, TimeProvider clock)
     {
         _decoder = decoder;
         _gpu = decoder as IGpuPictureProducer;
         _mailbox = mailbox;
         _tap = tap;
+        _signal = signal;
+
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "Relay video decode" };
     }
@@ -174,6 +180,7 @@ public sealed class DecodeWorker : IDisposable
 
             long decoded = _clock.GetTimestamp();
             HandOff(kind, decoded, timestamp);
+            _signal.Arrived(kind);
 
             long end = _clock.GetTimestamp();
             Interlocked.Add(ref _handOffTicks, end - decoded);

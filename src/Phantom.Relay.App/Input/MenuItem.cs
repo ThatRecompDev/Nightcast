@@ -32,6 +32,9 @@ public enum MenuItem
     /// <summary>Fullscreen or a window (F11).</summary>
     Fullscreen,
 
+    /// <summary>Present only the game's new pictures, for an external frame generator such as lsfg-vk (F12).</summary>
+    NewPicturesOnly,
+
     /// <summary>Start or stop a recording (F9).</summary>
     Record,
 

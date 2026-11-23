@@ -10,7 +10,7 @@ namespace Phantom.Relay.Desktop;
 
 /// <summary>
 /// One run of the desktop as its switches and the user's store set it up: the service, the profiles and the stream's
-/// settings, the setup and where its lines show (the window's screen and the text console), and the window's start.
+/// settings, the setup and where its lines show (the window's screen and the text console), the window's start, and whether it presents only new pictures.
 /// </summary>
 internal sealed record StreamRun(
     IXHomeSessionService Sessions,
@@ -18,6 +18,7 @@ internal sealed record StreamRun(
     StreamSettings Settings,
     BitrateFeedback Feedback,
     bool Fullscreen,
+    bool NewPicturesOnly,
     ISetupFlow Setup,
     ScreenWriter Screen,
     ScreenConsoleChoice Choice,

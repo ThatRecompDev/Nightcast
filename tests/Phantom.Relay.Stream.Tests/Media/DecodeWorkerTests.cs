@@ -6,9 +6,24 @@ using Phantom.Relay.Stream.Tests.Fakes;
 
 namespace Phantom.Relay.Stream.Tests.Media;
 
-public sealed class DecodeWorkerTests
+public sealed class DecodeWorkerTests : IDisposable
 {
     private readonly ManualTimeProvider _clock = new(new DateTimeOffset(2026, 11, 19, 12, 0, 0, TimeSpan.Zero));
+    private readonly NewPictureSignal _signal = new();
+
+    public void Dispose()
+    {
+        _signal.Dispose();
+    }
+
+    [Fact]
+    public void Each_new_picture_handed_on_is_signalled_to_the_render_thread()
+    {
+        Run(new FakeGpuDecoder { IsSharing = true }, new PictureMailbox(), new AccessUnitTap(), units: 1);
+
+        Assert.True(_signal.Wait(TimeSpan.Zero));
+        Assert.False(_signal.Wait(TimeSpan.Zero));
+    }
 
     [Fact]
     public void While_the_decoder_shares_each_picture_is_handed_on_on_the_gpu_and_never_read_back()
@@ -39,7 +54,7 @@ public sealed class DecodeWorkerTests
     public void A_shared_picture_counts_with_its_size()
     {
         var decoder = new FakeGpuDecoder { IsSharing = true };
-        var worker = new DecodeWorker(decoder, new PictureMailbox(), new AccessUnitTap(), _clock);
+        var worker = new DecodeWorker(decoder, new PictureMailbox(), new AccessUnitTap(), _signal, _clock);
         worker.Start();
         worker.Enqueue([0, 0, 0, 1, 0x65], 0, key: true);
 
@@ -62,7 +77,7 @@ public sealed class DecodeWorkerTests
 
     private void Run(FakeGpuDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, int units)
     {
-        var worker = new DecodeWorker(decoder, mailbox, tap, _clock);
+        var worker = new DecodeWorker(decoder, mailbox, tap, _signal, _clock);
         worker.Start();
 
         for (var unit = 0; unit < units; unit++)

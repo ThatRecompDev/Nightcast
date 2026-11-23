@@ -22,6 +22,9 @@ public static partial class AppLog
     [LoggerMessage(Level = LogLevel.Information, Message = "Setup done: the stream takes the window over")]
     public static partial void SetupHandedOver(this ILogger log);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "Presenting only new pictures (for an external frame generator): {On}")]
+    public static partial void NewPicturesOnly(this ILogger log, bool on);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Frame generation chosen live: {Setting}")]
     public static partial void GenerationChosen(this ILogger log, string setting);
 }

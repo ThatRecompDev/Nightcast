@@ -86,7 +86,8 @@ public static class ProbeProgram
         bool view = args.Contains(ViewArgument);
         var listen = view ? TimeSpan.MaxValue : ListenFor(args);
         var mailbox = new PictureMailbox();
-        using var video = new DecodeWorker(decoder, mailbox, new AccessUnitTap(), clock);
+        using var signal = new NewPictureSignal();
+        using var video = new DecodeWorker(decoder, mailbox, new AccessUnitTap(), signal, clock);
         video.Start();
 
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
