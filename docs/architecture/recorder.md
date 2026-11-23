@@ -2,7 +2,10 @@
 
 The recorder keeps, side by side, what the console sent and what Relay showed, so the owner can compare a game's own
 30 fps (GTA VI renders 30; the console sends 60 units a second, every other one a refined repeat) with what frame
-generation makes of it (60, 90 or 120 fps). It is the desktop head's (`Phantom.Relay.Desktop/Recording`), on Windows.
+generation makes of it (60, 90 or 120 fps). It is the desktop head's (`Phantom.Relay.Desktop/Recording`): on Windows all of
+the below; on Linux (SteamOS, the ROG Ally) source.mp4 alone, with the console's sound, by a pure C# MP4 writer
+([on Linux](#on-linux-sourcemp4-with-sound)). The Windows source.mp4 has no sound: Media Foundation's remux takes the
+video only, and the sound never reaches the Windows recorder.
 
 ## What is recorded, and where
 
@@ -77,6 +80,68 @@ doubled (`setpts=2*PTS`, every frame kept). It encodes with `h264_nvenc` (preset
 or `hevc_nvenc` when the pair is wider than the 4096 NVENC's H.264 takes, as two 1440p pictures (5120) are. Its progress
 (`-progress pipe:1`) shows in the window: `saved to … | compare 42 %`, then `compare.mp4 made`.
 
+## On Linux: source.mp4 with sound
+
+F9 on Linux (`PassthroughRecorder`, chosen by `DesktopProgram` per OS) records one file: the console's H.264 access
+units and its Opus sound exactly as they came, without decoding or re-encoding, so a handheld pays almost nothing for
+it (a queue add per unit on the decode thread, a copy of about 200 bytes per packet on the network thread, and the
+writer's own thread). No shown.mp4 (no GPU encoder on Linux yet) and no comparison.
+
+**Where.** `<Videos>/Nightcast/<yyyy-MM-dd HH-mm-ss>/source.mp4`, the Videos folder by the one rule the recorders and
+the screenshots share (`Places/UserFolders`: `$XDG_VIDEOS_DIR`, else the user-dirs Videos folder, else `~/Videos`).
+The window shows the same lines as on Windows: `● REC waiting for a key frame`,
+`● REC 00:42`, `saving the recording`, `saved to …/Nightcast/<stamp>` (`RecorderMachine`).
+
+**A finished recording is recognisable as finished.** Sharing happens outside Nightcast (a Decky plugin on the Ally,
+a tray app on Windows) by watching the recordings folder, so the Linux recorder writes `source.mp4.part` while it
+records; once the file is finished it is renamed to `source.mp4`, and after the rename the folder gets its empty `done`
+file (`RecordingFolder.MarkDone`, the Windows recorder's mark too). A watcher takes a recording when `done` exists (or, equally, when `source.mp4` exists:
+it never exists before the file is whole). A recording that failed or was cut short (a crash, the power) keeps its
+`source.mp4.part` and has no `done`; its fragments up to the cut still play.
+
+**How.** Starting asks the console for a key frame through the `AccessUnitTap`, as on Windows, and again every second
+until one comes. The decode worker offers each unit to the tap (the worker's own copy is queued, 256 at most, a full
+queue drops and counts); the desktop's sound sink is wrapped in an `AudioPacketTap` (`Phantom.Relay.Stream`), which
+hands each Opus packet to the player as before and then to the recording, which copies it into a ring of 512 slots made
+in advance (`AudioPacketRing`: nothing allocated, a full ring drops and counts). Both start at the first key frame.
+The recording's thread (`PassthroughRecording`) opens the file at that key frame (its SPS and PPS make the track) and
+writes each unit at its RTP time (90 kHz, wrap-safe, from the first) and each packet at its own RTP time (48 kHz). The
+two RTP clocks are unrelated, so the sound's first packet is placed where it arrived after the key frame (its arrival
+less the key frame's, on the same clock) and the rest follow its RTP clock: the sound lines up with the video to within
+the difference between the two paths' delays (a video unit is offered once all its packets came, just before decoding;
+a sound packet as it arrives), a few milliseconds.
+
+## The MP4 writer (Phantom.Relay.Media.Mp4)
+
+`FragmentedMp4Writer` is pure C# (NativeAOT-safe, no native library) and writes as it goes; it holds one fragment's
+samples in memory, never the file.
+
+| Part | What |
+|---|---|
+| Layout | fragmented MP4: `ftyp` (isom, iso6, mp41), `moov` with empty sample tables and `mvex` (`mehd`, a `trex` per track), written at once; then a `moof` + `mdat` about every second of video (or two seconds of sound when no video comes), each flushed to the file; on finishing an `mfra` index (a `tfra` per track, `mfro` last) and the movie's length written into `mehd` |
+| Video, track 1 | `avc1` with an `avcC` built from the stream's SPS and PPS (profile, compatibility and level from the SPS; 4-byte NAL lengths; the High profiles' optional extension left out, as many muxers do); timescale 90 000, so RTP times go in as they are; each sample is an access unit with its Annex-B start codes turned into 4-byte lengths (in-band SPS, PPS and delimiters kept); a sample's duration is the time to the next unit (each held until the next comes; the last one as long as the one before); key frames are sync samples (`trun` sample flags) |
+| Sound, track 2 | `Opus` sample entry (2 channels, 16-bit, 48 kHz) with `dOps` (version 0, pre-skip, 48 000, gain 0, mapping family 0; big-endian unlike Ogg's OpusHead); timescale 48 000; each packet a sample, its duration from its TOC (the engine's `OpusDecoder.SamplesOf`); a gap in the times is filled with one-byte packets (the TOC with frame count code 0 and no data: a frame a decoder conceals, RFC 6716 3.2.1), so the sound stays in step; late, repeated, invalid packets and those before the movie's start are left out and counted. The recorder gives a pre-skip of 0: the recording starts in the middle of the console's stream, not at its encoder's start |
+| Fragments | `tfhd` with default-base-is-moof, `tfdt` (version 1) with the run's first decoding time, a `trun` with each sample's duration and size (and flags for video), its data offset counted from the `moof` |
+
+**Why fragmented.** A recording that ends abruptly (Nightcast killed, the battery empty) still plays up to its last whole
+fragment: the front is written first and each fragment is complete on disk once flushed. A regular MP4 would need its
+`moov` at the end (unplayable if never written) or a second pass to move it to the front (doubling the disk writes on a
+handheld). Players and browsers read fragmented MP4 as they read the segments of adaptive streaming; the `mehd` length
+and the `mfra` index of a finished file give the duration and fast seeking.
+
+**Checked** on a file the writer made from ffmpeg's test sources (testsrc2 1280x720 60 fps through x264 High without
+B-frames, a 440 Hz sine through libopus in 10 ms packets; never a capture), with ffmpeg 4.4 in WSL Ubuntu 22.04
+(`SyntheticFileLiveTests`, a Live test, `RELAY_MP4_SYNTHETIC_DIR`): ffprobe reads `h264 High 1280x720 60/1` and
+`opus 48000 Hz stereo`, 360 video and 594 sound packets, the sound starting at 0.050 s as written, the one lost packet
+concealed (a one-byte sample), duration 6.04 s; `ffmpeg -i ... -f null -` decodes it all without an error; a seek to
+3.5 s decodes; the file cut in the middle of a fragment decodes its first 180 pictures (the whole fragments) and stops at
+the cut. The fast tests pin the boxes byte by byte (`Phantom.Relay.Media.Mp4.Tests`).
+
+**Not verified yet**: playback in Chrome, Firefox and Discord (Chrome and Firefox play Opus in MP4 and fragmented MP4;
+Discord's apps are Chromium, but Discord on iOS may not play Opus in MP4), and recording on the ROG Ally itself (the
+cost there, and the console answering the PLI). A change of the stream's size during a recording would need a new
+`avcC` (the writer keeps the first; avc1 with in-band parameter sets plays in most decoders); B-frames would need
+`ctts` (the console sends none).
 ## Costs (measured on the owner's RTX 4090, 2026-11-20)
 
 | | Cost |
@@ -91,7 +156,9 @@ or `hevc_nvenc` when the pair is wider than the 4096 NVENC's H.264 takes, as two
 ## Engine candidates
 
 `Mp4H264Remuxer`, `Mp4VideoEncoder` and `Mp4Reader` (`Phantom.Relay.Media.Windows/Recording`) are game-agnostic: the
-engine has an MP4 demuxer (`Media.Containers.Mp4`) and no muxer or encoder. A video recording port (encode a GPU
+engine has an MP4 demuxer (`Media.Containers.Mp4`) and no muxer or encoder. `FragmentedMp4Writer`
+(`Phantom.Relay.Media.Mp4`) is the muxer it lacks, pure C# on every platform, and the first candidate; with it the
+Windows source.mp4 could carry the sound too. A video recording port (encode a GPU
 texture, mux a coded stream) with this Windows implementation is an engine lane, through the coordinator.
 
 ## Only a live stream confirms

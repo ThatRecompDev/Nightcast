@@ -138,7 +138,7 @@ every refresh, read the pads every refresh, and present only when `NewPictureSig
 | LSFG (Lossless Scaling's frame generation) | Nightcast's own D3D11 port is not run; lsfg-vk runs instead (above), from the same rows and keys |
 | LS1 and SGSR (Lossless Scaling's upscalers) | chosen with F6, they fall back to FSR 1 (no decoder-side GPU path) |
 | NVIDIA FRUC | not offered |
-| Recording (F9: Media Foundation, NVENC) | refused, with the reason in the title |
+| Recording (F9: Media Foundation, NVENC, ffmpeg's comparison) | F9 records `source.mp4` alone: the console's H.264 and Opus sound as they came, by the pure C# MP4 writer, into `$XDG_VIDEOS_DIR` (else `~/Videos`) `/Nightcast/<stamp>/` ([recorder](recorder.md#on-linux-sourcemp4-with-sound)); no shown.mp4 and no comparison |
 | Borderless fullscreen (Win32) | not needed: gamescope shows the window fullscreen |
 | Media Foundation decoding | VA-API through FFmpeg ([linux-decode](linux-decode.md)), else openh264 in software |
 | PlayStation pads over HID, XInput | evdev (above) |
