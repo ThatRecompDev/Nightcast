@@ -32,7 +32,7 @@ public sealed class ProbeRun
 
     public ProbeRun(IXboxAuthService auth, IXHomeSessionService sessions, ILiveIce ice, DtlsCertificate certificate, IRandomSource random, TextReader input, TextWriter output)
     {
-        _setup = new TextSetup(auth, sessions, input, output);
+        _setup = new TextSetup(auth, sessions, input, output, onCode: null);
         _sessions = sessions;
         _ice = ice;
         _certificate = certificate;

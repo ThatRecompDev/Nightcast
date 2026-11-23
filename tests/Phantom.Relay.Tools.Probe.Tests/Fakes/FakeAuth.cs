@@ -4,7 +4,7 @@ using Phantom.Relay.Xbox.Auth;
 
 namespace Phantom.Relay.Tools.Probe.Tests.Fakes;
 
-/// <summary>An account that is signed in once a redirect address is handed to it.</summary>
+/// <summary>An account that is signed in once a redirect address is handed to it, or its sign-in code was waited for.</summary>
 public sealed class FakeAuth : IXboxAuthService
 {
     private static readonly StreamingToken Token = new(
@@ -21,6 +21,23 @@ public sealed class FakeAuth : IXboxAuthService
     public Task CompleteSignInAsync(Uri redirected, CancellationToken cancellation)
     {
         Redirected = redirected;
+        IsSignedIn = true;
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>The sign-in by code handed out, and whether it was waited for.</summary>
+    public DeviceSignIn? CodeShown { get; private set; }
+
+    public Task<DeviceSignIn> StartDeviceSignInAsync(CancellationToken cancellation)
+    {
+        CodeShown = new DeviceSignIn("ABCD1234", new Uri("https://link.example.test/"), TimeSpan.FromSeconds(5), DateTimeOffset.MaxValue) { DeviceCode = "device-code" };
+
+        return Task.FromResult(CodeShown);
+    }
+
+    public Task CompleteDeviceSignInAsync(DeviceSignIn signIn, CancellationToken cancellation)
+    {
         IsSignedIn = true;
 
         return Task.CompletedTask;

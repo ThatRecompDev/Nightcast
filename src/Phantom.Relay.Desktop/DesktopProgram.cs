@@ -28,6 +28,7 @@ using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Recording;
+using Phantom.Relay.Desktop.Setup;
 using Phantom.Relay.Desktop.Windowing;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Media.Windows;
@@ -45,8 +46,8 @@ using Phantom.Relay.Xbox.Session;
 namespace Phantom.Relay.Desktop;
 
 /// <summary>
-/// The desktop's composition root: sign-in on the console window (the kept account, or the sign-in page and the pasted
-/// address), the console choice, then the stream in a resizable window with the H.264 decoder and the XInput pads.
+/// The desktop's composition root: sign-in on the console window (the kept account, or a code entered at
+/// microsoft.com/link on any device, the page opened and the code copied here), the console choice, then the stream in a resizable window with the H.264 decoder and the XInput pads.
 /// F9 records the stream (<see cref="StreamRecorder"/>, into the user's Videos folder). Closing the window or Escape
 /// stops the stream and the session, after a recording still being finished is done. <c>--sign-out</c> forgets the kept account first;
 /// the bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
@@ -118,7 +119,7 @@ public static class DesktopProgram
         }
 
         var sessions = new XHomeSessionService(http, auth, clock, NullLogger<XHomeSessionService>.Instance);
-        var console = await ChooseConsoleAsync(new TextSetup(auth, sessions, Console.In, Console.Out), cancellation.Token);
+        var console = await ChooseConsoleAsync(new TextSetup(auth, sessions, Console.In, Console.Out, signIn => SignInCodeHelper.Help(signIn, Console.Out)), cancellation.Token);
 
         if (console is null)
         {

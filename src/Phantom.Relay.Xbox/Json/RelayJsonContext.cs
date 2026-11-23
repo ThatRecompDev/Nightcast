@@ -11,6 +11,8 @@ namespace Phantom.Relay.Xbox.Json;
 /// <summary>Source-generated JSON metadata for every payload Relay reads or writes (NativeAOT- and trim-safe).</summary>
 [JsonSourceGenerationOptions(DefaultIgnoreCondition = JsonIgnoreCondition.Never)]
 [JsonSerializable(typeof(MsaTokenReply))]
+[JsonSerializable(typeof(MsaErrorReply))]
+[JsonSerializable(typeof(DeviceCodeReply))]
 [JsonSerializable(typeof(UserTokenRequest))]
 [JsonSerializable(typeof(XstsRequest))]
 [JsonSerializable(typeof(XblTokenReply))]

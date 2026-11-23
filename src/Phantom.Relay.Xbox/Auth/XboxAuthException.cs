@@ -9,4 +9,7 @@ public sealed class XboxAuthException : Exception
         : base(message)
     {
     }
+
+    /// <summary>True when the kept sign-in is no longer accepted and was forgotten: signing in again fixes it.</summary>
+    public bool SignInAgain { get; init; }
 }

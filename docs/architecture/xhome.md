@@ -16,6 +16,19 @@ and the Xbox app send, written down here in our own words. Every constant lives 
 Only the Microsoft account tokens are kept (the user's store, key `account.credentials`). A refresh keeps the XSTS
 and streaming tokens; a new sign-in drops them. Each token is renewed two minutes before it expires.
 
+**Sign-in by code (what the apps use).** Step 1 can also run as an OAuth device-code grant (RFC 8628), with the same
+client id and scope, so nothing is pasted back and the code can be entered on a phone:
+
+- `POST login.live.com/oauth20_connect.srf` (`client_id`, `scope`, `response_type=device_code`) answers `user_code`,
+  `device_code`, `verification_uri` (`https://www.microsoft.com/link`), `interval` and `expires_in`. Checked live
+  2026-11-23: an 8-letter code, a 5 s interval, 900 s to enter it.
+- The app then asks `POST oauth20_token.srf` (`client_id`, `grant_type=urn:ietf:params:oauth:grant-type:device_code`,
+  `device_code`) every interval. Until the code is entered the answer is a 400 with `authorization_pending`;
+  `slow_down` adds 5 s to the interval; anything else ends the sign-in. Success is the same token answer as the code
+  grant.
+- A kept refresh token the service refuses (`invalid_grant`: revoked, a changed password, long unused) is forgotten,
+  and the app asks for a new code instead of failing.
+
 ## Sessions
 
 Every call goes to the default region's base address with `Authorization: Bearer <gsToken>`, `x-gssv-client` and

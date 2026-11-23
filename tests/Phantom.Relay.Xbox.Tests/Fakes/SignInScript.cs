@@ -18,6 +18,22 @@ public static class SignInScript
             $$"""{"access_token":"{{access}}","refresh_token":"refresh-1","expires_in":{{expiresIn}}}""");
     }
 
+    /// <summary>A sign-in code, as the live service answers it (made-up codes).</summary>
+    public static ScriptedHttpExchange DeviceCode(this ScriptedHttpExchange http, int expiresIn = 900)
+    {
+        return http.Answer(
+            HttpVerb.Post,
+            XboxEndpoints.MsaDeviceCode,
+            200,
+            $$"""{"user_code":"ABCD1234","device_code":"device-secret","verification_uri":"https://www.microsoft.com/link","interval":5,"expires_in":{{expiresIn}}}""");
+    }
+
+    /// <summary>The token endpoint's answer while the code was not entered yet.</summary>
+    public static ScriptedHttpExchange Pending(this ScriptedHttpExchange http)
+    {
+        return http.Answer(HttpVerb.Post, XboxEndpoints.MsaToken, 400, """{"error":"authorization_pending"}""");
+    }
+
     public static ScriptedHttpExchange TokenChain(this ScriptedHttpExchange http)
     {
         return http

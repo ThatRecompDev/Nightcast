@@ -59,15 +59,16 @@ public sealed class ProbeRunTests : IDisposable
     }
 
     [Fact]
-    public async Task Signing_in_reads_the_pasted_address()
+    public async Task Signing_in_shows_the_code_and_the_page_and_waits_for_it()
     {
         _auth.IsSignedIn = false;
         _sessions.Consoles.Add(new XboxConsole("F4001", "Living room", "XboxSeriesX", "On", true));
 
-        await Run("https://login.live.com/oauth20_desktop.srf?code=abc\n");
+        await Run(string.Empty);
 
-        Assert.Equal(new Uri("https://login.live.com/oauth20_desktop.srf?code=abc"), _auth.Redirected);
-        Assert.Contains("https://login.example.test/authorize", _output.ToString(), StringComparison.Ordinal);
+        Assert.True(_auth.IsSignedIn);
+        Assert.Contains("ABCD1234", _output.ToString(), StringComparison.Ordinal);
+        Assert.Contains("https://link.example.test/", _output.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

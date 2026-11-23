@@ -19,18 +19,30 @@ public sealed class XboxAuthService : IXboxAuthService, IDisposable
     private readonly CredentialStore _credentials;
     private readonly TimeProvider _clock;
     private readonly ILogger<XboxAuthService> _log;
+    private readonly Func<TimeSpan, CancellationToken, Task> _wait;
+    /// <summary>RFC 8628: a "slow down" answer adds this to the interval.</summary>
+    private static readonly TimeSpan SlowDownStep = TimeSpan.FromSeconds(5);
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private MsaToken? _msa;
     private XblToken? _xsts;
     private StreamingToken? _streaming;
 
+    /// <summary>A sign-in code's checks wait on the clock's timers.</summary>
     public XboxAuthService(IHttpExchange http, CredentialStore credentials, TimeProvider clock, ILogger<XboxAuthService> log)
+        : this(http, credentials, clock, log, (delay, cancellation) => Task.Delay(delay, clock, cancellation))
+    {
+    }
+
+    /// <summary><paramref name="wait"/> waits between a sign-in code's checks (a test's passes at once).</summary>
+    internal XboxAuthService(IHttpExchange http, CredentialStore credentials, TimeProvider clock, ILogger<XboxAuthService> log, Func<TimeSpan, CancellationToken, Task> wait)
     {
         _http = http;
         _credentials = credentials;
         _clock = clock;
         _log = log;
+        _wait = wait;
     }
 
     public bool IsSignedIn => _msa is not null || _credentials.Load() is not null;
@@ -42,6 +54,11 @@ public sealed class XboxAuthService : IXboxAuthService, IDisposable
         string code = SignInPage.ReadCode(redirected);
         var msa = await RequestMsaAsync(Grant("authorization_code", "code", code), cancellation);
 
+        await RememberAsync(msa, cancellation);
+    }
+
+    private async Task RememberAsync(MsaToken msa, CancellationToken cancellation)
+    {
         await _gate.WaitAsync(cancellation);
 
         try
@@ -52,6 +69,82 @@ public sealed class XboxAuthService : IXboxAuthService, IDisposable
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>How much longer to wait before asking again: nothing while the code waits, more after a "slow down"; a refusal ends the sign-in.</summary>
+    private static TimeSpan Waited(HttpReply reply)
+    {
+        var refusal = HttpRequests.Read(reply, RelayJsonContext.Default.MsaErrorReply);
+        string? error = refusal?.Error;
+
+        if (error == XboxEndpoints.AuthorizationPending)
+        {
+            return TimeSpan.Zero;
+        }
+
+        if (error == XboxEndpoints.SlowDown)
+        {
+            return SlowDownStep;
+        }
+
+        throw new XboxAuthException($"Sign-in was not completed: {refusal?.Description ?? error ?? $"HTTP {reply.Status}"}");
+    }
+
+    private static KeyValuePair<string, string>[] DeviceGrant(string deviceCode)
+    {
+        return
+        [
+            new("client_id", XboxEndpoints.MsaClientId),
+            new("grant_type", XboxEndpoints.DeviceCodeGrant),
+            new("device_code", deviceCode),
+        ];
+    }
+
+    public async Task<DeviceSignIn> StartDeviceSignInAsync(CancellationToken cancellation)
+    {
+        KeyValuePair<string, string>[] fields =
+        [
+            new("client_id", XboxEndpoints.MsaClientId),
+            new("scope", XboxEndpoints.MsaScope),
+            new("response_type", "device_code"),
+        ];
+        var reply = await _http.SendAsync(HttpRequests.Form(XboxEndpoints.MsaDeviceCode, fields), cancellation);
+        var code = ReadSuccess(reply, RelayJsonContext.Default.DeviceCodeReply, "sign-in code");
+
+        var page = new Uri(Required(code.VerificationUri, "verification_uri"));
+        var expiresAt = _clock.GetUtcNow().AddSeconds(code.ExpiresIn);
+
+        return new DeviceSignIn(Required(code.UserCode, "user_code"), page, TimeSpan.FromSeconds(code.Interval), expiresAt)
+        {
+            DeviceCode = Required(code.DeviceCode, "device_code"),
+        };
+    }
+
+    /// <summary>
+    /// Asks every interval (longer after a "slow down") until the code was entered, then keeps the account like any
+    /// sign-in; a refusal or the code's expiry ends it.
+    /// </summary>
+    public async Task CompleteDeviceSignInAsync(DeviceSignIn signIn, CancellationToken cancellation)
+    {
+        ArgumentNullException.ThrowIfNull(signIn);
+        var interval = signIn.Interval;
+
+        while (_clock.GetUtcNow() < signIn.ExpiresAt)
+        {
+            await _wait(interval, cancellation);
+            var reply = await _http.SendAsync(HttpRequests.Form(XboxEndpoints.MsaToken, DeviceGrant(signIn.DeviceCode)), cancellation);
+
+            if (reply.IsSuccess)
+            {
+                await RememberAsync(ToMsaToken(ReadSuccess(reply, RelayJsonContext.Default.MsaTokenReply, "Microsoft account token")), cancellation);
+
+                return;
+            }
+
+            interval += Waited(reply);
+        }
+
+        throw new XboxAuthException("The sign-in code expired before it was entered. Start again for a new one.");
     }
 
     public async Task<StreamingToken> GetStreamingTokenAsync(CancellationToken cancellation)
@@ -173,16 +266,38 @@ public sealed class XboxAuthService : IXboxAuthService, IDisposable
         }
 
         _log.RenewingAccountToken();
-        var renewed = await RequestMsaAsync(Grant("refresh_token", "refresh_token", msa.RefreshToken), cancellation);
+        var reply = await _http.SendAsync(HttpRequests.Form(XboxEndpoints.MsaToken, Grant("refresh_token", "refresh_token", msa.RefreshToken)), cancellation);
+        ForgetWhenRefused(reply);
+
+        var renewed = ToMsaToken(ReadSuccess(reply, RelayJsonContext.Default.MsaTokenReply, "Microsoft account token"));
         Keep(renewed);
 
         return renewed;
     }
 
+    /// <summary>A kept refresh token the service no longer takes (revoked, a changed password, long unused) is forgotten.</summary>
+    private void ForgetWhenRefused(HttpReply reply)
+    {
+        if (reply.IsSuccess || HttpRequests.Read(reply, RelayJsonContext.Default.MsaErrorReply)?.Error != XboxEndpoints.InvalidGrant)
+        {
+            return;
+        }
+
+        _msa = null;
+        _credentials.Clear();
+
+        throw new XboxAuthException("The kept sign-in has expired; sign in again.") { SignInAgain = true };
+    }
+
     private async Task<MsaToken> RequestMsaAsync(KeyValuePair<string, string>[] grant, CancellationToken cancellation)
     {
         var reply = await _http.SendAsync(HttpRequests.Form(XboxEndpoints.MsaToken, grant), cancellation);
-        var token = ReadSuccess(reply, RelayJsonContext.Default.MsaTokenReply, "Microsoft account token");
+
+        return ToMsaToken(ReadSuccess(reply, RelayJsonContext.Default.MsaTokenReply, "Microsoft account token"));
+    }
+
+    private MsaToken ToMsaToken(MsaTokenReply token)
+    {
         var expiresAt = _clock.GetUtcNow().AddSeconds(token.ExpiresIn);
 
         return new MsaToken(Required(token.AccessToken, "access_token"), Required(token.RefreshToken, "refresh_token"), expiresAt);

@@ -16,6 +16,12 @@ public interface IXboxAuthService
     /// <summary>Completes sign-in from the address the sign-in page sent the browser to.</summary>
     Task CompleteSignInAsync(Uri redirected, CancellationToken cancellation);
 
+    /// <summary>Starts a sign-in by code: the code to show the player and the page to enter it on.</summary>
+    Task<DeviceSignIn> StartDeviceSignInAsync(CancellationToken cancellation);
+
+    /// <summary>Waits until the player entered the code and keeps the account; throws when it expired or was refused.</summary>
+    Task CompleteDeviceSignInAsync(DeviceSignIn signIn, CancellationToken cancellation);
+
     /// <summary>A valid streaming token, renewing whatever in the chain expired.</summary>
     Task<StreamingToken> GetStreamingTokenAsync(CancellationToken cancellation);
 

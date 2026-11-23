@@ -16,6 +16,7 @@ public sealed class XboxAuthServiceTests
     private readonly ManualTimeProvider _clock = new(new DateTimeOffset(2026, 11, 19, 12, 0, 0, TimeSpan.Zero));
     private readonly MemoryPersistentStore _store = new();
     private readonly ScriptedHttpExchange _http = new();
+    private readonly List<TimeSpan> _waits = [];
 
     [Fact]
     public async Task Signing_in_keeps_the_account_tokens_and_walks_the_chain_to_a_streaming_token()
@@ -102,8 +103,83 @@ public sealed class XboxAuthServiceTests
         Assert.Null(new CredentialStore(_store).Load());
     }
 
+    [Fact]
+    public async Task A_sign_in_code_is_asked_after_until_it_was_entered_and_then_keeps_the_account()
+    {
+        _http.DeviceCode().Pending().Pending().MsaGrant("access-1", 3600).TokenChain();
+        using var auth = Service();
+
+        var signIn = await auth.StartDeviceSignInAsync(CancellationToken.None);
+        await auth.CompleteDeviceSignInAsync(signIn, CancellationToken.None);
+        var token = await auth.GetStreamingTokenAsync(CancellationToken.None);
+
+        Assert.Equal("ABCD1234", signIn.UserCode);
+        Assert.Equal(new Uri("https://www.microsoft.com/link"), signIn.Page);
+        Assert.DoesNotContain("device-secret", signIn.ToString(), StringComparison.Ordinal);
+        Assert.Equal([TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5)], _waits);
+
+        Assert.Contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Adevice_code", _http.BodyOf(1), StringComparison.Ordinal);
+        Assert.Contains("device_code=device-secret", _http.BodyOf(1), StringComparison.Ordinal);
+        Assert.Equal("gs-token", token.Value);
+        Assert.NotNull(new CredentialStore(_store).Load());
+    }
+
+    [Fact]
+    public async Task A_slow_down_waits_longer_and_a_refusal_ends_the_sign_in()
+    {
+        _http.DeviceCode()
+            .Answer(HttpVerb.Post, XboxEndpoints.MsaToken, 400, """{"error":"slow_down"}""")
+            .Answer(HttpVerb.Post, XboxEndpoints.MsaToken, 400, """{"error":"access_denied","error_description":"The user declined."}""");
+        using var auth = Service();
+        var signIn = await auth.StartDeviceSignInAsync(CancellationToken.None);
+
+        var error = await Assert.ThrowsAsync<XboxAuthException>(() => auth.CompleteDeviceSignInAsync(signIn, CancellationToken.None));
+
+        Assert.Contains("The user declined.", error.Message, StringComparison.Ordinal);
+        Assert.Equal([TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10)], _waits);
+        Assert.False(auth.IsSignedIn);
+    }
+
+    [Fact]
+    public async Task A_code_never_entered_expires()
+    {
+        _http.DeviceCode(expiresIn: 10).Pending().Pending();
+        using var auth = Service();
+        var signIn = await auth.StartDeviceSignInAsync(CancellationToken.None);
+
+        var error = await Assert.ThrowsAsync<XboxAuthException>(() => auth.CompleteDeviceSignInAsync(signIn, CancellationToken.None));
+
+        Assert.Contains("expired", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_refresh_token_no_longer_accepted_is_forgotten_and_asks_for_a_new_sign_in()
+    {
+        _http.MsaGrant("access-1", 600).TokenChain()
+            .Answer(HttpVerb.Post, XboxEndpoints.MsaToken, 400, """{"error":"invalid_grant","error_description":"The token has expired."}""");
+        using var auth = Service();
+        await auth.CompleteSignInAsync(Redirected, CancellationToken.None);
+        await auth.GetStreamingTokenAsync(CancellationToken.None);
+
+        _clock.Advance(TimeSpan.FromHours(2));
+        var error = await Assert.ThrowsAsync<XboxAuthException>(() => auth.GetStreamingTokenAsync(CancellationToken.None));
+
+        Assert.True(error.SignInAgain);
+        Assert.False(auth.IsSignedIn);
+        Assert.Null(new CredentialStore(_store).Load());
+    }
+
     private XboxAuthService Service()
     {
-        return new XboxAuthService(_http, new CredentialStore(_store), _clock, NullLogger<XboxAuthService>.Instance);
+        return new XboxAuthService(_http, new CredentialStore(_store), _clock, NullLogger<XboxAuthService>.Instance, Wait);
+    }
+
+    /// <summary>Each wait is recorded and passes on the manual clock at once.</summary>
+    private Task Wait(TimeSpan delay, CancellationToken cancellation)
+    {
+        _waits.Add(delay);
+        _clock.Advance(delay);
+
+        return Task.CompletedTask;
     }
 }

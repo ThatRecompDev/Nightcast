@@ -59,6 +59,26 @@ public static class XboxEndpoints
 
     public static readonly Uri MsaToken = new("https://login.live.com/oauth20_token.srf");
 
+    /// <summary>
+    /// Where a device code is asked for (RFC 8628 on the Microsoft account service): the player enters its short code on
+    /// the page the answer names (microsoft.com/link) from any device, while the app asks <see cref="MsaToken"/> with
+    /// <see cref="DeviceCodeGrant"/>. Checked live for <see cref="MsaClientId"/> and <see cref="MsaScope"/>: an
+    /// 8-letter code, a 5 s interval, 900 s to enter it.
+    /// </summary>
+    public static readonly Uri MsaDeviceCode = new("https://login.live.com/oauth20_connect.srf");
+
+    /// <summary>The token request's grant type while a device code waits to be entered.</summary>
+    public const string DeviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code";
+
+    /// <summary>The token endpoint's answer while the code has not been entered yet: ask again after the interval.</summary>
+    public const string AuthorizationPending = "authorization_pending";
+
+    /// <summary>The token endpoint's answer to asking too often: the interval grows.</summary>
+    public const string SlowDown = "slow_down";
+
+    /// <summary>The token endpoint's answer to a refresh token it no longer accepts: the player signs in again.</summary>
+    public const string InvalidGrant = "invalid_grant";
+
     public static readonly Uri UserAuthenticate = new("https://user.auth.xboxlive.com/user/authenticate");
 
     public static readonly Uri XstsAuthorize = new("https://xsts.auth.xboxlive.com/xsts/authorize");
