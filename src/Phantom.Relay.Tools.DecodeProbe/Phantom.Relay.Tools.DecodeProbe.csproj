@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Decodes an H.264 sample file with the Linux VA-API decoder and prints each picture's timing
+       (docs/architecture/linux-decode.md). Published self-contained for linux-x64, it runs where no .NET is installed. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Media" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.Media.Linux/Phantom.Relay.Media.Linux.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Tools.DecodeProbe.Tests" />
+  </ItemGroup>
+
+  <Import Project="../Phantom.Relay.Media.Linux/FfmpegLibraries.targets" />
+
+</Project>

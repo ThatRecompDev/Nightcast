@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Linux hardware H.264 decoder behind Phantom.Engine's IVideoDecoder: FFmpeg's libavcodec with the VA-API
+       hwaccel (an LGPL build of FFmpeg's own, scripts/build/build-ffmpeg-linux.ps1, loaded at run time and never in
+       the repository), reached through source-generated P/Invoke (LibraryImport), so it is NativeAOT-safe. An engine
+       candidate: nothing in it is the console's, and it belongs beside the engine's openh264 H264Decoder once the
+       engine ships FFmpeg (docs/architecture/linux-decode.md). Its NV12 split and the SPS's colour come from
+       Media.Windows' game-agnostic helpers, engine candidates themselves. -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Core" />
+    <PackageReference Include="Phantom.Engine.Media" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Media.Linux.Tests" />
+  </ItemGroup>
+
+</Project>

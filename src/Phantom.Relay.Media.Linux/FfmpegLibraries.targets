@@ -1,0 +1,19 @@
+<Project>
+
+  <!-- Copyright (c) 2026 Phantom.Relay. All rights reserved. -->
+
+  <!-- FFmpeg's libavcodec and libavutil (the LGPL build of scripts/build/build-ffmpeg-linux.ps1) beside a linux-x64
+       app, imported by the apps that open VaapiH264Decoder. Only when they were built: without them the app still
+       builds and the decoder says they are missing (openh264 takes over). A single-file publish with
+       IncludeNativeLibrariesForSelfExtract carries them inside the executable and unpacks them on the first start
+       (docs/architecture/linux-decode.md). Never in the repository: artifacts/ is ignored. -->
+  <PropertyGroup>
+    <NightcastFfmpegFolder>$(MSBuildThisFileDirectory)../../artifacts/native/linux-x64/ffmpeg/</NightcastFfmpegFolder>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(RuntimeIdentifier)' == 'linux-x64' And Exists('$(NightcastFfmpegFolder)libavcodec.so.62') And Exists('$(NightcastFfmpegFolder)libavutil.so.60')">
+    <None Include="$(NightcastFfmpegFolder)libavcodec.so.62;$(NightcastFfmpegFolder)libavutil.so.60"
+          Link="%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
+</Project>
