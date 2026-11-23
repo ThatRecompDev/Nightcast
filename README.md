@@ -13,7 +13,9 @@ Get `Nightcast.exe` from the [latest release](../../releases/latest) and run it.
 installation. At every start it checks this page for a newer release and updates itself. Each download is checked
 against the release's SHA-256 first. Start it with `--no-update` to skip that.
 
-Windows 10 or 11, 64-bit. Windows may warn about an unknown publisher the first time.
+Windows 10 or 11, 64-bit: `Nightcast.exe`. Windows may warn about an unknown publisher the first time.
+
+SteamOS and other 64-bit Linux (for example a ROG Ally): `Nightcast-linux-x64`. Make it executable, add it to Steam as a non-Steam game (Gamepad controller template) and start it from Gaming Mode. It also updates itself.
 
 ## First start
 
@@ -44,14 +46,25 @@ Xbox controllers, DualSense and DualShock 4 pads, and handheld built-in pads wor
 
 ## Frame generation and upscaling (optional)
 
-- **LSFG and LS1** use your own copy of [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)
+- **LSFG and LS1** (Windows) use your own copy of [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/)
   from Steam. Nightcast finds it through Steam and contains none of its files. Without it, these options are
   unavailable.
+- **Frame generation on Linux** runs through [lsfg-vk](https://lsfg-vk.dev) 2.0.0 (CC BY-NC-ND 4.0), which Nightcast
+  downloads unmodified from its official site the first time you turn it on and keeps in its own folder. It needs
+  Lossless Scaling's Steam beta branch `lsfg-vk` (Properties › Game Versions & Betas). No Decky Loader needed.
 - **NVIDIA FRUC** needs an NVIDIA GPU and NVIDIA's Optical Flow SDK on your machine. Set `PHANTOM_NVOFFRUC_DIR` to
   its folder.
 - FSR 1 and xBR upscaling are built in.
 
+## Third-party software
+
+- The Linux build includes FFmpeg 8.1.3's libavcodec and libavutil (LGPL v2.1 or later), dynamically linked, for
+  hardware video decoding. Source: https://ffmpeg.org/releases/ffmpeg-8.1.3.tar.xz; the licence and build configuration
+  are attached to each release.
+- lsfg-vk is not part of Nightcast: it is downloaded from its official site on your machine when you use it.
+
 ## Privacy
 
-Nightcast talks only to Microsoft's sign-in and streaming services, your console, and this GitHub page for updates.
+Nightcast talks only to Microsoft's sign-in and streaming services, your console, this GitHub page for updates and,
+on Linux when you turn frame generation on, lsfg-vk's download site.
 It sends nothing anywhere else and collects nothing.
