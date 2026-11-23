@@ -52,8 +52,9 @@ namespace Phantom.Relay.Desktop;
 /// then the console choice (the only one without asking, else picked with the pad or the keys); the stream then takes
 /// the same window over, with the H.264 decoder and the platform's pads (<see cref="DesktopWindow"/>). A setup that fails
 /// (or a machine without a network or a decoder) shows why until B or Escape. F9 records the stream
-/// (<see cref="StreamRecorder"/>, into the user's Videos folder). Closing the window or Escape stops the stream and the
-/// session, after a recording still being finished is done. <c>--sign-out</c> forgets the kept account first; the
+/// (<see cref="StreamRecorder"/> on Windows, <see cref="PassthroughRecorder"/> on Linux, into the user's Videos
+/// folder). Closing the window or Escape stops the stream and the session, after a recording still being finished is
+/// done. <c>--sign-out</c> forgets the kept account first; the
 /// bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
 /// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
 /// <c>--no-feedback</c> turns it off. On Windows the stream starts fullscreen (borderless,
@@ -275,7 +276,7 @@ public static class DesktopProgram
         // The sound: the console's Opus through the jitter buffer into the system's output.
         using var speakers = new SokolAudioDevice(new Logger<SokolAudioDevice>(logs));
         var player = new OpusStreamPlayer(new EngineOpusFrameDecoder(new OpusDecoder(OpusStreamFormat.Channels)), run.Clock, OpusStreamFormat.SampleRate, PlayoutSettings.Default);
-        IStreamAudioSink sound = StartSound(speakers, player);
+        var sound = new AudioPacketTap(StartSound(speakers, player));
         pump.Drain();
 
         // A UDP socket on any address and a free port, for ICE and everything after it.
@@ -291,7 +292,7 @@ public static class DesktopProgram
 
         // The recordings and the screenshots, saved where the user keeps videos and pictures.
         var notices = new NoticeBoard(run.Clock);
-        var recorder = new StreamRecorder(connection, shown, RecordingPlaces.Find(), run.Clock, new Logger<StreamRecorder>(logs));
+        var recorder = Recorder(connection, sound, shown, run.Clock, logs);
         var screenshots = new ScreenshotTaker(connection, UserFolders.Screenshots(), notices, run.Clock, new Logger<ScreenshotTaker>(logs));
 
         using var session = new SetupSession(run.Setup, run.Screen, run.Choice);
@@ -310,8 +311,22 @@ public static class DesktopProgram
         return new RunOutcome(Outcome(connection.Stats), false);
     }
 
+    /// <summary>
+    /// The recorder (F9): on Windows source.mp4, shown.mp4 and their comparison (Media Foundation, NVENC, ffmpeg); on
+    /// Linux source.mp4 alone, the console's H.264 and Opus by the pure C# MP4 writer.
+    /// </summary>
+    private static IDesktopRecorder Recorder(StreamConnection connection, AudioPacketTap sound, ShownPictureTap shown, TimeProvider clock, ILoggerFactory logs)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            return new PassthroughRecorder(connection, sound, UserFolders.Videos(), clock, new Logger<PassthroughRecorder>(logs));
+        }
+
+        return new StreamRecorder(connection, shown, RecordingPlaces.Find(), clock, new Logger<StreamRecorder>(logs));
+    }
+
     /// <summary>The window's application: the setup, handing over to the stream's on the console chosen.</summary>
-    private static SetupApplication Window(WindowParts parts, StreamRun run, SetupSession session, StreamConnection connection, StreamRecorder recorder, ScreenshotTaker screenshots, ILoggerFactory logs)
+    private static SetupApplication Window(WindowParts parts, StreamRun run, SetupSession session, StreamConnection connection, IDesktopRecorder recorder, ScreenshotTaker screenshots, ILoggerFactory logs)
     {
         var log = logs.CreateLogger<StreamApplication>();
 
@@ -319,7 +334,7 @@ public static class DesktopProgram
     }
 
     /// <summary>The stream starts on the console chosen; its application takes the window.</summary>
-    private static StreamApplication StartStream(XboxConsole console, WindowParts parts, StreamRun run, StreamConnection connection, StreamRecorder recorder, ScreenshotTaker screenshots, ILogger<StreamApplication> log)
+    private static StreamApplication StartStream(XboxConsole console, WindowParts parts, StreamRun run, StreamConnection connection, IDesktopRecorder recorder, ScreenshotTaker screenshots, ILogger<StreamApplication> log)
     {
         var profile = ProfileChoice.For(run.Profiles, null);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
@@ -344,7 +359,7 @@ public static class DesktopProgram
     {
         if (!OperatingSystem.IsWindows())
         {
-            return "Frame generation is lsfg-vk's (the menu's Frame generation row); LS1, NVIDIA FRUC and recording are Windows-only.";
+            return "Frame generation is lsfg-vk's (the menu's Frame generation row); LS1 and NVIDIA FRUC are Windows-only. F9 records the console's video and sound (source.mp4).";
         }
 
         var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, Phantom.Relay.Lsfg.LosslessLocator.SteamLibraries());
@@ -358,7 +373,7 @@ public static class DesktopProgram
     }
 
     /// <summary>A recording stopped as the window closed is finished (and compared) before the decoder goes.</summary>
-    private static void FinishRecordings(StreamRecorder recorder, LogPump pump)
+    private static void FinishRecordings(IDesktopRecorder recorder, LogPump pump)
     {
         if (recorder.IsFinishing)
         {

@@ -25,6 +25,9 @@ internal static partial class RecorderLog
     [LoggerMessage(Level = LogLevel.Warning, Message = "source.mp4 not written: {Reason}")]
     public static partial void SourceRefused(this ILogger log, string reason);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "source.mp4: {Units} units, {Packets} sound packets ({Concealed} lost ones concealed), {Seconds:F1} s; dropped {DroppedUnits} units and {DroppedPackets} packets (queues full)")]
+    public static partial void PassthroughWritten(this ILogger log, long units, long packets, long concealed, double seconds, long droppedUnits, long droppedPackets);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "shown.mp4: {Encoder} ({Hardware}), {Codec} {Width}x{Height} at {Rate} fps")]
     public static partial void ShownEncoder(this ILogger log, string encoder, string hardware, string codec, int width, int height, int rate);
 

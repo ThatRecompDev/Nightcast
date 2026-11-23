@@ -14,7 +14,7 @@ namespace Phantom.Relay.Desktop.Recording;
 /// (compare.mp4, and compare-half-speed.mp4 at half speed) on that thread too. The window reads <see cref="Status"/> each
 /// frame; nothing here waits on the render thread.
 /// </summary>
-internal sealed class StreamRecorder : IStreamRecorder
+internal sealed class StreamRecorder : IDesktopRecorder
 {
     private const string NothingYet = "nothing to record yet: no picture was decoded";
 

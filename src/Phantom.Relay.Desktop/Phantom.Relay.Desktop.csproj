@@ -21,6 +21,7 @@
     <ProjectReference Include="../Phantom.Relay.Http.Bcl/Phantom.Relay.Http.Bcl.csproj" />
     <ProjectReference Include="../Phantom.Relay.Lsfg/Phantom.Relay.Lsfg.csproj" />
     <ProjectReference Include="../Phantom.Relay.Media.Linux/Phantom.Relay.Media.Linux.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Media.Mp4/Phantom.Relay.Media.Mp4.csproj" />
     <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
     <ProjectReference Include="../Phantom.Relay.Nvidia/Phantom.Relay.Nvidia.csproj" />
     <ProjectReference Include="../Phantom.Relay.Pads.Linux/Phantom.Relay.Pads.Linux.csproj" />

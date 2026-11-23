@@ -18,6 +18,9 @@ internal sealed class RtpTimeline
     private uint _last;
     private bool _started;
 
+    /// <summary>The last unit's time in the 90 kHz clock's own ticks since the first unit (the MP4 writer's units).</summary>
+    public long Ticks => _ticks;
+
     /// <summary>The time of the unit stamped <paramref name="rtpTimestamp"/>, in 100 ns units since the first unit.</summary>
     public long Next(uint rtpTimestamp)
     {

@@ -27,6 +27,12 @@ internal static class RecordingFolder
     /// <summary>The same at half speed.</summary>
     public const string HalfSpeedFile = "compare-half-speed.mp4";
 
+    /// <summary>
+    /// What a file is called while it is written (Linux: <c>source.mp4.part</c>); renamed to its own name once finished,
+    /// so a watcher outside Nightcast never takes a file still being written.
+    /// </summary>
+    public const string PartSuffix = ".part";
+
     /// <summary>The recording's settings and counts.</summary>
     public const string ReportFile = "recording.txt";
 
