@@ -14,6 +14,12 @@ public static class LosslessLocator
     /// <summary>Lossless Scaling's Steam folder and its frame generation library, below a Steam library's root.</summary>
     public static readonly string RelativePath = Path.Combine("steamapps", "common", "Lossless Scaling", "Lossless.dll");
 
+    /// <summary>
+    /// The file lsfg-vk 2.0 reads on Linux, in the same folder: Lossless Scaling's Steam beta branch "lsfg-vk" brings it
+    /// (lsfg-vk's own search and the Decky plugin look for this name).
+    /// </summary>
+    public static readonly string LsfgVkRelativePath = Path.Combine("steamapps", "common", "Lossless Scaling", "lsfg-vk.dll");
+
     // Steam's install folder, written by Steam's own installer for the user.
     private const string SteamKey = @"Software\Valve\Steam";
     private const string SteamPathValue = "SteamPath";
@@ -25,6 +31,17 @@ public static class LosslessLocator
     /// <summary>The configured path when the file is there, else the first Steam library holding it, else null.</summary>
     public static string? Find(string? configured, IEnumerable<string> steamLibraries)
     {
+        return Find(configured, steamLibraries, RelativePath);
+    }
+
+    /// <summary>
+    /// The configured path when the file is there, else the first Steam library holding <paramref name="relativePath"/>
+    /// (<see cref="RelativePath"/> or <see cref="LsfgVkRelativePath"/>), else null.
+    /// </summary>
+    public static string? Find(string? configured, IEnumerable<string> steamLibraries, string relativePath)
+    {
+        ArgumentNullException.ThrowIfNull(steamLibraries);
+
         if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
         {
             return configured;
@@ -32,7 +49,7 @@ public static class LosslessLocator
 
         foreach (var library in steamLibraries)
         {
-            var candidate = Path.Combine(library, RelativePath);
+            var candidate = Path.Combine(library, relativePath);
 
             if (File.Exists(candidate))
             {
