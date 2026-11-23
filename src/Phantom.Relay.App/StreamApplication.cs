@@ -40,8 +40,9 @@ namespace Phantom.Relay.App;
 /// with LS1 its network. F9 starts or stops a recording (<see cref="IStreamRecorder"/>, the head's); while it records
 /// and for a few seconds after, its status ("● REC 00:42", where it was saved, the comparison's progress) shows in the
 /// title and over the picture's top-left corner (in the stats' block while F3 shows them).
-/// Fullscreen (F11, Alt+Enter) waits for the engine: its window has no fullscreen call yet. Escape closes the window, except while keyboard and mouse play, when it
-/// is the game's and Shift+Escape closes it; closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
+/// F11 or Alt+Enter toggles fullscreen (<see cref="IWindowMode"/>, the head's: the engine's window has no fullscreen
+/// call yet), which hides the cursor. Escape closes the window, except while keyboard and mouse play, when it is the
+/// game's and Shift+Escape closes it; on the pad alone View and Menu held together close it (<see cref="QuitChord"/>); closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
 /// the Xbox, failed) closes the window too.
 /// </summary>
 public sealed class StreamApplication : IApplication
@@ -64,6 +65,8 @@ public sealed class StreamApplication : IApplication
     private readonly RumblePlayer _rumble;
     private readonly IStreamRecorder _recorder;
     private readonly StatsOverlay _recordOverlay;
+    private readonly IWindowMode _mode;
+    private readonly QuitChord _quitChord = new();
 
     private TimeSpan _now;
     private string? _recording;
@@ -75,13 +78,14 @@ public sealed class StreamApplication : IApplication
 
     /// <summary>
     /// The window's app; <c>motors</c> run the console's vibration on the pads, null where the pads have none; F9 goes to
-    /// the head's <c>recorder</c>.
+    /// the head's <c>recorder</c>; <c>mode</c> is the window's fullscreen, the head's choice to start in.
     /// </summary>
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, IStreamRecorder recorder, TimeProvider clock, ILogger<StreamApplication> log)
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, IStreamRecorder recorder, IWindowMode mode, TimeProvider clock, ILogger<StreamApplication> log)
     {
         _log = log;
         _clock = clock;
         _rumble = new RumblePlayer(motors);
+        _mode = mode;
 
         _device = device;
         _window = window;
@@ -102,6 +106,21 @@ public sealed class StreamApplication : IApplication
         _overlay.Initialize();
         _recordOverlay.Initialize();
         ShowTitle();
+
+        _mode.Begin();
+        ShowCursorWhenWindowed();
+    }
+
+    /// <summary>F11 or Alt+Enter: fullscreen to windowed and back; the cursor hides while the window is fullscreen.</summary>
+    private void ToggleFullscreen()
+    {
+        _mode.Toggle();
+        ShowCursorWhenWindowed();
+    }
+
+    private void ShowCursorWhenWindowed()
+    {
+        _window.SetCursorVisible(!_mode.Fullscreen);
     }
 
     public void Frame(double seconds, InputFrame input)
@@ -250,7 +269,18 @@ public sealed class StreamApplication : IApplication
             {
                 _captureMouse = !_captureMouse;
             }
+            else if (IsFullscreenKey(input, inputEvent.Key))
+            {
+                ToggleFullscreen();
+            }
         }
+    }
+
+    private static bool IsFullscreenKey(InputFrame input, Key key)
+    {
+        bool alt = input.IsKeyDown(Key.LeftAlt) || input.IsKeyDown(Key.RightAlt);
+
+        return key == Key.F11 || (key == Key.Enter && alt);
     }
 
     /// <summary>
@@ -403,6 +433,11 @@ public sealed class StreamApplication : IApplication
     {
         _now += TimeSpan.FromSeconds(seconds);
         var pad = _pads.Compose(input, (float)seconds);
+
+        if (_quitChord.Held(in pad, _now))
+        {
+            _window.Quit();
+        }
 
         if (_reports.ShouldSend(in pad, input.Focused, _now, out var report))
         {

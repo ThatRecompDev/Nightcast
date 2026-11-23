@@ -28,6 +28,7 @@ using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Recording;
+using Phantom.Relay.Desktop.Windowing;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Media.Windows;
 using Phantom.Relay.Pads.Windows;
@@ -50,7 +51,8 @@ namespace Phantom.Relay.Desktop;
 /// stops the stream and the session, after a recording still being finished is done. <c>--sign-out</c> forgets the kept account first;
 /// the bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
 /// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
-/// <c>--no-feedback</c> turns it off.
+/// <c>--no-feedback</c> turns it off. The window starts fullscreen (borderless, <see cref="BorderlessFullscreen"/>);
+/// <c>--windowed</c> starts it as a window. With one console it connects without asking.
 /// Tokens stay in the user's own store, never in the output.
 /// </summary>
 public static class DesktopProgram
@@ -62,17 +64,35 @@ public static class DesktopProgram
 
     private const string SignOutArgument = "--sign-out";
     private const string NoFeedbackArgument = "--no-feedback";
+    private const string WindowedArgument = "--windowed";
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
 
     /// <summary>Large enough for any datagram WebRTC sends on a LAN path (the Ethernet MTU) with room to spare.</summary>
     private const int MaxDatagramLength = 2048;
 
+    /// <summary>
+    /// Runs it all; started by a double-click (the console window its own, its input not redirected), a run that ended
+    /// in a refusal or a failure keeps the window open until Enter, so the reason can be read.
+    /// </summary>
     public static async Task<int> Main(string[] args)
+    {
+        int outcome = await RunAsync(args);
+
+        if (outcome != Succeeded && !Console.IsInputRedirected)
+        {
+            Console.WriteLine("Press Enter to close.");
+            Console.ReadLine();
+        }
+
+        return outcome;
+    }
+
+    private static async Task<int> RunAsync(string[] args)
     {
         if (!BitrateFeedbackArguments.TryParse(args, out var asked, out string? wrong))
         {
-            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}");
+            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}");
 
             return Refused;
         }
@@ -108,7 +128,9 @@ public static class DesktopProgram
         var profiles = BuiltInProfiles.With(new ProfileStore(store).LoadAll());
         var settings = SessionSettings.For(ProfileChoice.For(profiles, null).Stream.Resolution, clock);
 
-        return StreamConsole(sessions, console, profiles, settings, feedback, clock);
+        bool fullscreen = !args.Contains(WindowedArgument);
+
+        return StreamConsole(sessions, console, profiles, settings, feedback, fullscreen, clock);
     }
 
     /// <summary>
@@ -154,7 +176,7 @@ public static class DesktopProgram
     }
 
     /// <summary>Streams the console in the window until it closes, then stops the stream, the sound and the pads.</summary>
-    private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, BitrateFeedback feedback, TimeProvider clock)
+    private static int StreamConsole(XHomeSessionService sessions, XboxConsole console, IReadOnlyList<StreamProfile> profiles, StreamSettings settings, BitrateFeedback feedback, bool fullscreen, TimeProvider clock)
     {
         // The log: the engine's ring, written to the console's error stream after every frame.
         using var logs = new RingLoggerFactory(LogOptions.Default, clock);
@@ -187,10 +209,10 @@ public static class DesktopProgram
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         using var connection = new StreamConnection(sessions, transport, doorbell, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
         var recorder = new StreamRecorder(connection, shown, RecordingPlaces.Find(), clock, new Logger<StreamRecorder>(logs));
-        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats, F9 records; Escape ends.");
+        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats, F9 records, F11 fullscreen; Escape (or View+Menu held) ends.");
         connection.Start(console.ServerId, settings, feedback);
 
-        RunWindow(connection, recorder, ProfileChoice.For(profiles, null), pump, clock, new Logger<StreamApplication>(logs));
+        RunWindow(connection, recorder, ProfileChoice.For(profiles, null), fullscreen, pump, clock, new Logger<StreamApplication>(logs));
         connection.Stop();
         speakers.Stop();
         FinishRecordings(recorder, pump);
@@ -274,35 +296,37 @@ public static class DesktopProgram
     /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
     /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
     /// </summary>
-    private static void RunWindow(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    private static void RunWindow(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, bool fullscreen, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         if (OperatingSystem.IsWindows())
         {
-            RunWindowWithWindowsPads(connection, recorder, profile, pump, clock, log);
+            RunWindowWithWindowsPads(connection, recorder, profile, fullscreen, pump, clock, log);
 
             return;
         }
 
-        Run(connection, recorder, profile, new NoGamepads(), new NoSystemFonts(), pump, clock, log);
+        Run(connection, recorder, profile, new NoGamepads(), new NoSystemFonts(), new WindowedOnly(), pump, clock, log);
     }
 
+    /// <summary>Windows' pads and fonts, and its borderless fullscreen, started in it when <paramref name="fullscreen"/>.</summary>
     [SupportedOSPlatform("windows")]
-    private static void RunWindowWithWindowsPads(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    private static void RunWindowWithWindowsPads(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, bool fullscreen, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        Run(connection, recorder, profile, new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads), new WindowsSystemFonts(), pump, clock, log);
+        var pads = new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads);
+        Run(connection, recorder, profile, pads, new WindowsSystemFonts(), new BorderlessFullscreen(fullscreen), pump, clock, log);
         playStation.Stop();
     }
 
     /// <summary>The window and its frames until it closes, with <paramref name="pads"/> read once a frame and the stats drawn in a font of <paramref name="fonts"/>.</summary>
-    private static void Run(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, IGamepadSource pads, ISystemFonts fonts, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    private static void Run(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, IGamepadSource pads, ISystemFonts fonts, IWindowMode mode, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, pads as IGamepadFeedback, recorder, clock, log);
+        var application = new StreamApplication(device, window, connection, new ProfilePadComposer(profile), reports, fonts, pads as IGamepadFeedback, recorder, mode, clock, log);
         var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);
