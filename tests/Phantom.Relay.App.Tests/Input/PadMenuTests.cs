@@ -48,6 +48,26 @@ public sealed class PadMenuTests
         Assert.StartsWith("  Frame generation", lines[2], StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void The_screenshot_row_follows_record_and_chooses_a_screenshot()
+    {
+        var menu = new PadMenu();
+        menu.Open(XboxButtons.None);
+        var lines = menu.Lines(_ => string.Empty);
+        var record = Array.FindIndex(lines, line => line.Contains("Record", StringComparison.Ordinal));
+
+        Assert.StartsWith("  Screenshot", lines[record + 1], StringComparison.Ordinal);
+
+        // The rows follow the title line, so the screenshot row is as many presses down as the record row's line.
+        for (var step = 0; step < record; step++)
+        {
+            menu.Step(XboxButtons.DPadDown);
+            menu.Step(XboxButtons.None);
+        }
+
+        Assert.Equal(MenuItem.Screenshot, menu.Step(XboxButtons.A));
+    }
+
     private static string StatsOn(MenuItem item)
     {
         if (item == MenuItem.Stats)

@@ -32,6 +32,7 @@ public sealed class PadMenu
         MenuItem.Fullscreen,
         MenuItem.NewPicturesOnly,
         MenuItem.Record,
+        MenuItem.Screenshot,
         MenuItem.Close,
         MenuItem.EndStream,
     ];
@@ -143,6 +144,7 @@ public sealed class PadMenu
             MenuItem.Fullscreen => "Fullscreen",
             MenuItem.NewPicturesOnly => "New pictures only",
             MenuItem.Record => "Record",
+            MenuItem.Screenshot => "Screenshot",
             MenuItem.Close => "Back to the game",
             _ => "End the stream",
         };

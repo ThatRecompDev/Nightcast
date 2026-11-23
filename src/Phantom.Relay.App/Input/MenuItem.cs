@@ -38,6 +38,9 @@ public enum MenuItem
     /// <summary>Start or stop a recording (F9).</summary>
     Record,
 
+    /// <summary>Save the console's picture as a PNG (F1).</summary>
+    Screenshot,
+
     /// <summary>Back to the game.</summary>
     Close,
 

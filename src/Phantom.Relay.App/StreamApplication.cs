@@ -41,7 +41,8 @@ namespace Phantom.Relay.App;
 /// LS1, its performance setting and SGSR (on the decoder's GPU), xBR and off, live; F7 steps FSR 1's sharpness, or
 /// with LS1 its network. F9 starts or stops a recording (<see cref="IStreamRecorder"/>, the head's); while it records
 /// and for a few seconds after, its status ("● REC 00:42", where it was saved, the comparison's progress) shows in the
-/// title and over the picture's top-left corner (in the stats' block while F3 shows them).
+/// title and over the picture's top-left corner (in the stats' block while F3 shows them). F1 saves the console's
+/// picture as a PNG (<see cref="IScreenshots"/>, the head's), whose status shows the same way.
 /// F11 or Alt+Enter toggles fullscreen (<see cref="IWindowMode"/>, the head's: the engine's window has no fullscreen
 /// call yet), which hides the cursor. Escape closes the window, except while keyboard and mouse play, when it is the
 /// game's and Shift+Escape closes it. On the pad alone, View and Menu pressed together open Relay's menu (<see cref="PadMenu"/>:
@@ -86,6 +87,7 @@ public sealed class StreamApplication : IApplication
     private readonly ILogger<StreamApplication> _log;
     private readonly RumblePlayer _rumble;
     private readonly IStreamRecorder _recorder;
+    private readonly IScreenshots _screenshots;
     private readonly StatsOverlay _recordOverlay;
     private readonly IWindowMode _mode;
     private readonly MenuChord _chord = new();
@@ -100,6 +102,8 @@ public sealed class StreamApplication : IApplication
 
     private TimeSpan _now;
     private string? _recording;
+    private string? _recorderStatus;
+    private string? _screenshotStatus;
     private StatsLevel _statsLevel;
     private bool _upscalerChanged;
     private StreamStats? _shownStats;
@@ -109,9 +113,10 @@ public sealed class StreamApplication : IApplication
 
     /// <summary>
     /// The window's app; <c>motors</c> run the console's vibration on the pads, null where the pads have none; F9 goes to
-    /// the head's <c>recorder</c>; <c>mode</c> is the window's fullscreen, the head's choice to start in.
+    /// the head's <c>recorder</c>, F1 to its <c>screenshots</c>; <c>mode</c> is the window's fullscreen,
+    /// the head's choice to start in.
     /// </summary>
-    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, IStreamRecorder recorder, IWindowMode mode, TimeProvider clock, ILogger<StreamApplication> log)
+    public StreamApplication(IGraphicsDevice device, IWindow window, StreamConnection stream, IPadComposer pads, PadReportPolicy reports, ISystemFonts fonts, IGamepadFeedback? motors, IStreamRecorder recorder, IScreenshots screenshots, IWindowMode mode, TimeProvider clock, ILogger<StreamApplication> log)
     {
         _log = log;
         _clock = clock;
@@ -123,7 +128,9 @@ public sealed class StreamApplication : IApplication
         _stream = stream;
         _pads = pads;
         _reports = reports;
+
         _recorder = recorder;
+        _screenshots = screenshots;
 
         // Pictures read back, and those left on the GPU where the decoder can share them; upscaled to a larger window.
         _picture = new StreamPicture(device, stream);
@@ -340,51 +347,64 @@ public sealed class StreamApplication : IApplication
     {
         foreach (var inputEvent in input.Events)
         {
-            if (inputEvent.Kind != InputEventKind.KeyDown || inputEvent.Repeat)
+            if (IsScreenshotKey(inputEvent))
             {
-                continue;
+                _screenshots.Take();
             }
+            else if (inputEvent.Kind == InputEventKind.KeyDown && !inputEvent.Repeat)
+            {
+                HandleKey(input, inputEvent.Key);
+            }
+        }
+    }
 
-            if (inputEvent.Key == Key.Escape)
-            {
-                QuitUnlessPlayed(input);
-            }
-            else if (inputEvent.Key == Key.F2)
-            {
-                ToggleFit();
-            }
-            else if (inputEvent.Key == Key.F3)
-            {
-                ToggleStats();
-            }
-            else if (inputEvent.Key is Key.F4 or Key.F5 or Key.F8)
-            {
-                SwitchGeneration(inputEvent.Key);
-            }
-            else if (inputEvent.Key == Key.F6)
-            {
-                SwitchUpscaler();
-            }
-            else if (inputEvent.Key == Key.F7)
-            {
-                SwitchSharpness();
-            }
-            else if (inputEvent.Key == Key.F9)
-            {
-                ToggleRecording();
-            }
-            else if (inputEvent.Key == Key.F12)
-            {
-                PresentNewPicturesOnly(!_newPicturesOnly);
-            }
-            else if (inputEvent.Key == Key.F10 && KeyboardMousePlays())
-            {
-                _captureMouse = !_captureMouse;
-            }
-            else if (IsFullscreenKey(input, inputEvent.Key))
-            {
-                ToggleFullscreen();
-            }
+    /// <summary>F1 down. PrintScreen is left to the system and to other programs.</summary>
+    private static bool IsScreenshotKey(InputEvent inputEvent)
+    {
+        return inputEvent.Kind == InputEventKind.KeyDown && !inputEvent.Repeat && inputEvent.Key == Key.F1;
+    }
+
+    private void HandleKey(InputFrame input, Key key)
+    {
+        if (key == Key.Escape)
+        {
+            QuitUnlessPlayed(input);
+        }
+        else if (key == Key.F2)
+        {
+            ToggleFit();
+        }
+        else if (key == Key.F3)
+        {
+            ToggleStats();
+        }
+        else if (key is Key.F4 or Key.F5 or Key.F8)
+        {
+            SwitchGeneration(key);
+        }
+        else if (key == Key.F6)
+        {
+            SwitchUpscaler();
+        }
+        else if (key == Key.F7)
+        {
+            SwitchSharpness();
+        }
+        else if (key == Key.F9)
+        {
+            ToggleRecording();
+        }
+        else if (key == Key.F12)
+        {
+            PresentNewPicturesOnly(!_newPicturesOnly);
+        }
+        else if (key == Key.F10 && KeyboardMousePlays())
+        {
+            _captureMouse = !_captureMouse;
+        }
+        else if (IsFullscreenKey(input, key))
+        {
+            ToggleFullscreen();
         }
     }
 
@@ -575,6 +595,9 @@ public sealed class StreamApplication : IApplication
             case MenuItem.Record:
                 ToggleRecording();
                 break;
+            case MenuItem.Screenshot:
+                _screenshots.Take();
+                break;
             case MenuItem.Close:
                 _menu.Close();
                 break;
@@ -615,7 +638,8 @@ public sealed class StreamApplication : IApplication
             MenuItem.RumbleStrength => string.Create(CultureInfo.InvariantCulture, $"{_rumble.Gain * Percent:0} %"),
             MenuItem.Fullscreen => OnOff(_mode.Fullscreen),
             MenuItem.NewPicturesOnly => NewPicturesValue(),
-            MenuItem.Record => _recording ?? "off",
+            MenuItem.Record => _recorderStatus ?? "off",
+            MenuItem.Screenshot => _screenshotStatus ?? "F1",
             _ => string.Empty,
         };
     }
@@ -741,16 +765,22 @@ public sealed class StreamApplication : IApplication
         _recorder.Toggle(new RecordingSettings(report.FrameGeneration, multiplier, _picture.Describe(report.Upscale)));
     }
 
-    /// <summary>The recorder's status, over the picture and in the title, laid out again only when it changed.</summary>
+    /// <summary>
+    /// The recorder's status and the screenshots' (the file saved), over the picture and in the title, laid
+    /// out again only when either changed.
+    /// </summary>
     private void FollowRecording()
     {
-        var status = _recorder.Status;
+        var recorder = _recorder.Status;
+        var screenshots = _screenshots.Status;
 
-        if (ReferenceEquals(status, _recording))
+        if (ReferenceEquals(recorder, _recorderStatus) && ReferenceEquals(screenshots, _screenshotStatus))
         {
             return;
         }
 
+        (_recorderStatus, _screenshotStatus) = (recorder, screenshots);
+        var status = Joined(recorder, screenshots);
         _recording = status;
         _shownStats = null;
 
@@ -762,6 +792,22 @@ public sealed class StreamApplication : IApplication
         }
 
         _recordOverlay.Show([status]);
+    }
+
+    /// <summary>Both statuses, or the one there is, or null.</summary>
+    private static string? Joined(string? recorder, string? screenshots)
+    {
+        if (recorder is null)
+        {
+            return screenshots;
+        }
+
+        if (screenshots is null)
+        {
+            return recorder;
+        }
+
+        return $"{recorder} | {screenshots}";
     }
 
     /// <summary>The stats' lines, the recorder's status first while it has one.</summary>

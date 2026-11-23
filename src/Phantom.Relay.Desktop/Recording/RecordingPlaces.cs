@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.Desktop.Places;
+
 namespace Phantom.Relay.Desktop.Recording;
 
 /// <summary>
@@ -8,7 +10,6 @@ namespace Phantom.Relay.Desktop.Recording;
 /// </summary>
 internal sealed record RecordingPlaces(string Videos, string? Ffmpeg, string? FontFile)
 {
-    private const string VideosFolder = "Videos";
     private const string PathVariable = "PATH";
 
     // Consolas, else Arial: both in every Windows install.
@@ -18,13 +19,7 @@ internal sealed record RecordingPlaces(string Videos, string? Ffmpeg, string? Fo
     public static RecordingPlaces Find()
     {
         var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        var videos = Environment.GetFolderPath(Environment.SpecialFolder.MyVideos);
-
-        if (string.IsNullOrEmpty(videos))
-        {
-            videos = Path.Combine(profile, VideosFolder);
-        }
-
+        var videos = UserFolders.Videos();
         var ffmpeg = FfmpegLocator.Find(Environment.GetEnvironmentVariable(PathVariable), profile, File.Exists);
 
         return new RecordingPlaces(videos, ffmpeg, FindFont());

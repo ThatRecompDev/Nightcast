@@ -24,8 +24,10 @@ using Phantom.Relay.Audio;
 using Phantom.Relay.Desktop.Logging;
 using Phantom.Relay.Desktop.LsfgVk;
 using Phantom.Relay.Desktop.Pictures;
+using Phantom.Relay.Desktop.Places;
 using Phantom.Relay.Desktop.Recording;
 using Phantom.Relay.Desktop.Setup;
+using Phantom.Relay.Desktop.Stills;
 using Phantom.Relay.Desktop.Updates;
 using Phantom.Relay.Desktop.Windowing;
 using Phantom.Relay.Http.Bcl;
@@ -286,11 +288,16 @@ public static class DesktopProgram
         var random = new SeededRandomSource((ulong)run.Clock.GetTimestamp());
         using var connection = new StreamConnection(run.Sessions, transport, doorbell, hostAddress, decoder, sound, run.Profiles, run.Clock, random, new Logger<StreamConnection>(logs));
         using var closing = new ConsoleClosing(connection);
+
+        // The recordings and the screenshots, saved where the user keeps videos and pictures.
+        var notices = new NoticeBoard(run.Clock);
         var recorder = new StreamRecorder(connection, shown, RecordingPlaces.Find(), run.Clock, new Logger<StreamRecorder>(logs));
+        var screenshots = new ScreenshotTaker(connection, UserFolders.Screenshots(), notices, run.Clock, new Logger<ScreenshotTaker>(logs));
+
         using var session = new SetupSession(run.Setup, run.Screen, run.Choice);
         SetupApplication? setup = null;
 
-        DesktopWindow.Run(parts => setup = Window(parts, run, session, connection, recorder, logs), run.Fullscreen, pump);
+        DesktopWindow.Run(parts => setup = Window(parts, run, session, connection, recorder, screenshots, logs), run.Fullscreen, pump);
         connection.Stop();
         speakers.Stop();
         FinishRecordings(recorder, pump);
@@ -304,19 +311,19 @@ public static class DesktopProgram
     }
 
     /// <summary>The window's application: the setup, handing over to the stream's on the console chosen.</summary>
-    private static SetupApplication Window(WindowParts parts, StreamRun run, SetupSession session, StreamConnection connection, StreamRecorder recorder, ILoggerFactory logs)
+    private static SetupApplication Window(WindowParts parts, StreamRun run, SetupSession session, StreamConnection connection, StreamRecorder recorder, ScreenshotTaker screenshots, ILoggerFactory logs)
     {
         var log = logs.CreateLogger<StreamApplication>();
 
-        return new SetupApplication(parts.Device, parts.Window, parts.Fonts, session, console => StartStream(console, parts, run, connection, recorder, log), log);
+        return new SetupApplication(parts.Device, parts.Window, parts.Fonts, session, console => StartStream(console, parts, run, connection, recorder, screenshots, log), log);
     }
 
     /// <summary>The stream starts on the console chosen; its application takes the window.</summary>
-    private static StreamApplication StartStream(XboxConsole console, WindowParts parts, StreamRun run, StreamConnection connection, StreamRecorder recorder, ILogger<StreamApplication> log)
+    private static StreamApplication StartStream(XboxConsole console, WindowParts parts, StreamRun run, StreamConnection connection, StreamRecorder recorder, ScreenshotTaker screenshots, ILogger<StreamApplication> log)
     {
         var profile = ProfileChoice.For(run.Profiles, null);
         var reports = new PadReportPolicy(PadReportSettings.Standard);
-        var application = new StreamApplication(parts.Device, parts.Window, connection, new ProfilePadComposer(profile), reports, parts.Fonts, parts.Motors, recorder, parts.Mode, run.Clock, log);
+        var application = new StreamApplication(parts.Device, parts.Window, connection, new ProfilePadComposer(profile), reports, parts.Fonts, parts.Motors, recorder, screenshots, parts.Mode, run.Clock, log);
 
         application.PresentNewPicturesOnly(run.NewPicturesOnly);
 
