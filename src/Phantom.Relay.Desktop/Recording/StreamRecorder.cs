@@ -186,6 +186,8 @@ internal sealed class StreamRecorder : IStreamRecorder
             var folder = RecordingFolder.Short(session.Folder);
             var compare = CompareNote(summary);
             Report(session.Folder, summary, compare);
+            RecordingFolder.MarkDone(session.Folder);
+
             _machine.Saved(SavedTo + folder);
             _log.RecordingSaved(folder);
 

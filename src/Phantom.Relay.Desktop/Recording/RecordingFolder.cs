@@ -30,6 +30,13 @@ internal static class RecordingFolder
     /// <summary>The recording's settings and counts.</summary>
     public const string ReportFile = "recording.txt";
 
+    /// <summary>
+    /// The marker of a finished recording: an empty file written once source.mp4, shown.mp4 and recording.txt are whole
+    /// and closed (before ffmpeg's comparison, which may follow), so a program watching the folder takes the videos only
+    /// then. A folder without it is still being recorded, or its recording failed.
+    /// </summary>
+    public const string DoneFile = "done";
+
     /// <summary>The stamp a folder is named by: the local time, to the second, with no character a path refuses.</summary>
     public const string StampFormat = "yyyy-MM-dd HH-mm-ss";
 
@@ -63,6 +70,13 @@ internal static class RecordingFolder
         }
 
         return folder;
+    }
+
+    /// <summary>Marks the recording in <paramref name="folder"/> as finished (<see cref="DoneFile"/>).</summary>
+    public static void MarkDone(string folder)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(folder);
+        File.WriteAllBytes(Path.Combine(folder, DoneFile), []);
     }
 
     /// <summary>The folder as the window shows it: the ellipsis, then <c>Phantom.Relay\2026-11-20 21-14-03</c>.</summary>

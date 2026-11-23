@@ -9,6 +9,23 @@ public sealed class RecordingFolderTests
     private static readonly DateTimeOffset Start = new(2026, 11, 20, 21, 4, 3, TimeSpan.FromHours(1));
 
     [Fact]
+    public void A_finished_recording_carries_an_empty_done_marker()
+    {
+        var folder = Directory.CreateTempSubdirectory("relay-done-").FullName;
+
+        try
+        {
+            RecordingFolder.MarkDone(folder);
+
+            Assert.Equal(0, new FileInfo(Path.Combine(folder, "done")).Length);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void A_recording_is_named_by_its_local_start_to_the_second()
     {
         Assert.Equal("2026-11-20 21-04-03", RecordingFolder.Stamp(Start));
