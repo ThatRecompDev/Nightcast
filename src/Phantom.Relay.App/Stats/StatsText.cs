@@ -20,6 +20,9 @@ namespace Phantom.Relay.App.Stats;
 public static class StatsText
 {
     private const string NotMeasured = "-";
+
+    /// <summary>A round trip is the way there and back.</summary>
+    private const int BothWays = 2;
     private const string UpscaleArrow = "→";
     private const string FullRate = "every picture new";
     private const string HalfRate = "every other repeated";
@@ -125,6 +128,59 @@ public static class StatsText
             .. Optional(upscale),
             string.Create(invariant, $"input: {Hands(source)}"),
         ];
+    }
+
+    /// <summary>
+    /// The latency from the console to the screen as far as this end can see it: half the network's round trip, the
+    /// decode and the time from decode to the screen (the console's own capture and encode are not measured).
+    /// </summary>
+    public static TimeSpan Latency(StreamStats stats, PresentStats present)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+
+        return OneWay(stats) + stats.DecodeAverage + present.DecodeToPresent;
+    }
+
+    /// <summary>Half the network's round trip; nothing before it was measured.</summary>
+    private static TimeSpan OneWay(StreamStats stats)
+    {
+        return (stats.IceRoundTrip ?? TimeSpan.Zero) / BothWays;
+    }
+
+    /// <summary>The small overlay's one line: the frame rate shown and the latency.</summary>
+    public static string Small(StreamStats stats, PresentStats present, int multiplier)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+
+        return string.Create(CultureInfo.InvariantCulture, $"{Rate(stats, multiplier)} | latency {Milliseconds(Latency(stats, present))}");
+    }
+
+    /// <summary>The large overlay: the frame rate, the latency's parts, the bitrate and losses, and what improves the picture.</summary>
+    public static string[] Large(StreamStats stats, PresentStats present, GpuPictureReport pictures, int multiplier, string? upscale = null)
+    {
+        ArgumentNullException.ThrowIfNull(stats);
+        ArgumentNullException.ThrowIfNull(pictures);
+        var invariant = CultureInfo.InvariantCulture;
+
+        return
+        [
+            string.Create(invariant, $"{Rate(stats, multiplier)}, {stats.NewPicturesPerSecond:F0} new from the console"),
+            string.Create(invariant, $"latency {Milliseconds(Latency(stats, present))}: network {Milliseconds(OneWay(stats))}, decode {Milliseconds(stats.DecodeAverage)}, to screen {Milliseconds(present.DecodeToPresent)}"),
+            string.Create(invariant, $"{stats.Width}x{stats.Height}, {stats.VideoMegabitsPerSecond:F1} Mbit/s, lost {stats.PacketsLost}"),
+            Shorten(pictures.FrameGeneration),
+            .. Optional(upscale),
+        ];
+    }
+
+    /// <summary>The frame rate on screen: the stream's, or with frame generation the new pictures times its multiplier.</summary>
+    private static string Rate(StreamStats stats, int multiplier)
+    {
+        if (multiplier > 1)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{stats.NewPicturesPerSecond * multiplier:F0} fps (x{multiplier})");
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{stats.FramesReceivedPerSecond:F0} fps");
     }
 
     /// <summary>The block's first line: the state and, once a picture came, its size; a failure with its reason.</summary>

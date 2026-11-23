@@ -82,6 +82,12 @@ public static class DesktopProgram
     /// </summary>
     public static async Task<int> Main(string[] args)
     {
+        // A downloaded build started to finish an update replaces the old one, starts it and ends.
+        if (UpdateHandoff.TryFinish(Environment.ProcessPath, args, Console.Out))
+        {
+            return Succeeded;
+        }
+
         int outcome = await RunAsync(args);
 
         if (outcome != Succeeded && !Console.IsInputRedirected)

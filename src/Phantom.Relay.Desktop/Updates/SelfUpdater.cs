@@ -1,6 +1,5 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
-using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Security.Cryptography;
 
@@ -9,17 +8,15 @@ namespace Phantom.Relay.Desktop.Updates;
 /// <summary>
 /// Keeps a published Nightcast up to date from its public releases (<see cref="UpdateSource"/>), at start, before
 /// anything else: GitHub's latest release is asked for anonymously; when it is newer than the running build its exe is
-/// downloaded beside the running one, checked against the release's SHA-256, and swapped in (Windows lets a running exe
-/// be renamed: the old one becomes <c>.old</c> and is deleted at the next start), and the new exe starts with the same
-/// arguments in the same console. Offline, slow, or anything unexpected, and the app starts as it is: an update never
-/// stops a stream. No credential is sent or kept.
+/// downloaded beside the running one as <c>.new</c> and checked against the release's SHA-256, and the new exe is
+/// started to finish the update (<see cref="UpdateHandoff"/>) while this one ends. The running exe's file is never
+/// renamed or replaced while it runs: a single-file app loads parts of itself from its own file later, by path, and
+/// another file at that path breaks it. Offline, slow, or anything unexpected, and the app starts as it is: an update
+/// never stops a stream. No credential is sent or kept.
 /// </summary>
 public static class SelfUpdater
 {
-    private const string NewSuffix = ".new";
-    private const string OldSuffix = ".old";
-
-    /// <summary>True when a newer build was started in this one's place: the caller ends now.</summary>
+    /// <summary>True when a newer build was started to take this one's place: the caller ends now.</summary>
     public static async Task<bool> TryUpdateAsync(string? exePath, Version? running, IReadOnlyList<string> args, TextWriter output, CancellationToken cancellation)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -29,15 +26,15 @@ public static class SelfUpdater
             return false;
         }
 
-        RemoveOld(exePath);
+        UpdateHandoff.RemoveLeftover(exePath);
 
         try
         {
             return await UpdateAsync(exePath, running!, args, output, cancellation);
         }
-        catch (Exception problem) when (problem is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        catch (Exception problem) when (problem is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException or System.ComponentModel.Win32Exception)
         {
-            output.WriteLine($"Update check skipped ({problem.Message}).");
+            output.WriteLine($"Update check skipped ({problem.GetType().Name}: {problem.Message}).");
 
             return false;
         }
@@ -68,7 +65,7 @@ public static class SelfUpdater
             return false;
         }
 
-        string downloaded = exePath + NewSuffix;
+        string downloaded = UpdateHandoff.NewPath(exePath);
 
         if (!await DownloadAsync(exe, downloaded, expected, cancellation))
         {
@@ -78,9 +75,8 @@ public static class SelfUpdater
             return false;
         }
 
-        Swap(exePath, downloaded);
-        Restart(exePath, args);
-        output.WriteLine($"Updated to {latest}; starting it.");
+        UpdateHandoff.Start(downloaded, exePath, args);
+        output.WriteLine($"Downloaded {latest}; it takes over now.");
 
         return true;
     }
@@ -101,41 +97,5 @@ public static class SelfUpdater
         var hash = await SHA256.HashDataAsync(written, cancellation);
 
         return Convert.ToHexStringLower(hash) == expected;
-    }
-
-    private static void Swap(string exePath, string downloaded)
-    {
-        string old = exePath + OldSuffix;
-        File.Move(exePath, old, overwrite: true);
-        File.Move(downloaded, exePath);
-    }
-
-    private static void Restart(string exePath, IReadOnlyList<string> args)
-    {
-        var start = new ProcessStartInfo(exePath) { UseShellExecute = false };
-
-        foreach (var arg in args)
-        {
-            start.ArgumentList.Add(arg);
-        }
-
-        using var process = Process.Start(start);
-    }
-
-    /// <summary>The build an update replaced, still there from the last start; gone once nothing runs it.</summary>
-    private static void RemoveOld(string exePath)
-    {
-        try
-        {
-            File.Delete(exePath + OldSuffix);
-        }
-        catch (IOException)
-        {
-            // Still running (a second window): the next start removes it.
-        }
-        catch (UnauthorizedAccessException)
-        {
-            // The same.
-        }
     }
 }

@@ -53,6 +53,7 @@ public sealed class StreamApplication : IApplication
 {
     private const byte FirstPad = 0;
     private const float Percent = 100f;
+    private const int LevelCount = 4;
 
     private static readonly Vector4 Black = new(0f, 0f, 0f, 1f);
 
@@ -79,7 +80,7 @@ public sealed class StreamApplication : IApplication
 
     private TimeSpan _now;
     private string? _recording;
-    private bool _showStats;
+    private StatsLevel _statsLevel;
     private bool _upscalerChanged;
     private StreamStats? _shownStats;
     private StreamProfile? _profile;
@@ -236,7 +237,7 @@ public sealed class StreamApplication : IApplication
         {
             _menuOverlay.Draw();
         }
-        else if (_showStats)
+        else if (_statsLevel != StatsLevel.Off)
         {
             _overlay.Draw();
         }
@@ -477,7 +478,7 @@ public sealed class StreamApplication : IApplication
     {
         return item switch
         {
-            MenuItem.Stats => OnOff(_showStats),
+            MenuItem.Stats => LevelName(_statsLevel),
             MenuItem.FrameGeneration => _generation.Describe(_stream.Stats.NewPicturesPerSecond),
             MenuItem.Upscaler => _picture.Describe(Report().Upscale),
             MenuItem.PictureFit => FitName(_fit),
@@ -508,13 +509,24 @@ public sealed class StreamApplication : IApplication
         return "16:9 with bars";
     }
 
-    /// <summary>F3: the stats block on or off.</summary>
+    /// <summary>F3: the stats small, large, detailed, then off; only the detailed block times the GPU passes.</summary>
     private void ToggleStats()
     {
-        _showStats = !_showStats;
+        _statsLevel = (StatsLevel)(((int)_statsLevel + 1) % LevelCount);
         _shownStats = null;
         _overlay.Clear();
-        _picture.TimePasses(_showStats);
+        _picture.TimePasses(_statsLevel == StatsLevel.Detailed);
+    }
+
+    private static string LevelName(StatsLevel level)
+    {
+        return level switch
+        {
+            StatsLevel.Small => "small",
+            StatsLevel.Large => "large",
+            StatsLevel.Detailed => "detailed",
+            _ => "off",
+        };
     }
 
     /// <summary>F2: 16:9 with bars, or stretched to a screen of another shape.</summary>
@@ -657,7 +669,7 @@ public sealed class StreamApplication : IApplication
         _shownStats = stats;
         var present = _meter.Take();
 
-        if (!_showStats)
+        if (_statsLevel == StatsLevel.Off)
         {
             _window.SetTitle(QuietTitle(stats));
 
@@ -667,12 +679,31 @@ public sealed class StreamApplication : IApplication
         var report = Report();
         var upscale = _picture.Describe(report.Upscale);
         _window.SetTitle(StatsText.Clamp(WithRecording(StatsText.Title(stats, present, report, upscale))));
-        _overlay.Show(WithRecording([.. StatsText.Lines(stats, present, report, _pads.Source, upscale), SentLine()]));
+        _overlay.Show(WithRecording(OverlayLines(stats, present, report, upscale)));
 
         if (_log.IsEnabled(LogLevel.Information))
         {
             _log.Stats(StatsText.WithStats(stats, present, report, upscale));
         }
+    }
+
+    /// <summary>The overlay's lines at the chosen level.</summary>
+    private string[] OverlayLines(StreamStats stats, PresentStats present, GpuPictureReport report, string upscale)
+    {
+        var chosen = _generation.Current;
+        int multiplier = 1;
+
+        if (chosen.IsOn)
+        {
+            multiplier = chosen.ClampedMultiplier;
+        }
+
+        return _statsLevel switch
+        {
+            StatsLevel.Small => [StatsText.Small(stats, present, multiplier)],
+            StatsLevel.Large => StatsText.Large(stats, present, report, multiplier, upscale),
+            _ => [.. StatsText.Lines(stats, present, report, _pads.Source, upscale), SentLine()],
+        };
     }
 
     /// <summary>

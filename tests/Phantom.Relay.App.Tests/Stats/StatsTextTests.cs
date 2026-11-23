@@ -37,6 +37,25 @@ public sealed class StatsTextTests
     private static readonly PresentStats Present = new(TimeSpan.FromMilliseconds(6.2), TimeSpan.FromMilliseconds(9.5), TimeSpan.FromMilliseconds(0.1), OnGpu: true);
 
     [Fact]
+    public void The_small_overlay_shows_the_frame_rate_and_the_latency_and_frame_generation_multiplies_the_new_pictures()
+    {
+        // Latency: half of 0.4 ms, 8.14 ms decode, 6.2 ms to screen.
+        Assert.Equal("60 fps | latency 14.5 ms", StatsText.Small(Streaming, Present, 1));
+        Assert.Equal("59 fps (x2) | latency 14.5 ms", StatsText.Small(Streaming, Present, 2));
+    }
+
+    [Fact]
+    public void The_large_overlay_breaks_the_latency_down_in_a_few_lines()
+    {
+        var lines = StatsText.Large(Streaming, Present, GpuPictureReport.Idle with { FrameGeneration = "LSFG x2 (quality)" }, 1, "FSR 1 to 3840x2160");
+
+        Assert.Equal("60 fps, 30 new from the console", lines[0]);
+        Assert.Equal("latency 14.5 ms: network 0.2 ms, decode 8.1 ms, to screen 6.2 ms", lines[1]);
+        Assert.Equal("2560x1440, 14.0 Mbit/s, lost 2", lines[2]);
+        Assert.Equal(["LSFG x2 (quality)", "FSR 1 to 3840x2160"], lines[3..]);
+    }
+
+    [Fact]
     public void The_stats_read_the_same_on_a_dutch_machine()
     {
         var culture = CultureInfo.CurrentCulture;
