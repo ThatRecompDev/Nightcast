@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A pure C# MP4 writer on every platform: the console's H.264 and Opus as they came, without re-encoding, as a
+       fragmented MP4 (ISO/IEC 14496-12 and -15, Opus in ISOBMFF) written as it goes, so a recording cut short still
+       plays. Nothing in it is the console's: an engine candidate beside the engine's MP4 demuxer (Media.Containers.Mp4),
+       which has no muxer. Its Annex-B scanning is Media.Windows' game-agnostic helper, as Media.Linux's is; an Opus
+       packet's length is the engine's (OpusDecoder.SamplesOf). docs/architecture/recorder.md. -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Audio" />
+    <PackageReference Include="Phantom.Engine.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Media.Mp4.Tests" />
+  </ItemGroup>
+
+</Project>

@@ -9,6 +9,7 @@
     <Project Path="src/Phantom.Relay.Pads.Linux/Phantom.Relay.Pads.Linux.csproj" />
     <Project Path="src/Phantom.Relay.Pads.Windows/Phantom.Relay.Pads.Windows.csproj" />
     <Project Path="src/Phantom.Relay.Media.Linux/Phantom.Relay.Media.Linux.csproj" />
+    <Project Path="src/Phantom.Relay.Media.Mp4/Phantom.Relay.Media.Mp4.csproj" />
     <Project Path="src/Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
     <Project Path="src/Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
     <Project Path="src/Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
@@ -28,6 +29,7 @@
     <Project Path="tests/Phantom.Relay.Pads.Linux.Tests/Phantom.Relay.Pads.Linux.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Pads.Windows.Tests/Phantom.Relay.Pads.Windows.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Media.Linux.Tests/Phantom.Relay.Media.Linux.Tests.csproj" />
+    <Project Path="tests/Phantom.Relay.Media.Mp4.Tests/Phantom.Relay.Media.Mp4.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Media.Windows.Tests/Phantom.Relay.Media.Windows.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Profiles.Tests/Phantom.Relay.Profiles.Tests.csproj" />
     <Project Path="tests/Phantom.Relay.Stream.Tests/Phantom.Relay.Stream.Tests.csproj" />
