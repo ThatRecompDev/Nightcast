@@ -9,13 +9,23 @@ namespace Phantom.Relay.Desktop.LsfgVk;
 /// <summary>
 /// The check through this process's own Vulkan loader, after the layer's variables are set and before the window's
 /// instance exists: the loader's list of instance layers (the manifest found, not switched off), then a bare instance
-/// made with lsfg-vk's version query chained (<see cref="LsfgVersionInfo"/>) and destroyed at once. The layer, once
-/// loaded, stays loaded in the process with the profile it took; the window's instance uses the same. The bare
-/// instance asks for no surface, so lsfg-vk passes it through untouched.
+/// made and destroyed at once, which loads the layer; whether it started and took Nightcast's profile is read from
+/// what it wrote into its own log (<see cref="LsfgVkLog"/>) during that instance, not from a structure chained to it
+/// (an earlier guess at lsfg-vk's version structure read a bad pointer and crashed). The layer, once loaded, stays
+/// loaded in the process with the profile it took; the window's instance uses the same. The bare instance asks for no
+/// surface, so lsfg-vk passes it through untouched.
 /// </summary>
 [SupportedOSPlatform("linux")]
 public sealed unsafe class VulkanLayerProbe : ILayerProbe
 {
+    private readonly string _logPath;
+
+    /// <summary><paramref name="logPath"/> is the log lsfg-vk writes (the config's <c>log_file</c>).</summary>
+    public VulkanLayerProbe(string logPath)
+    {
+        _logPath = logPath;
+    }
+
     public LayerCheck Check()
     {
         try
@@ -78,11 +88,11 @@ public sealed unsafe class VulkanLayerProbe : ILayerProbe
         return names;
     }
 
-    /// <summary>The version the layer wrote into a bare instance's creation; null when it did not.</summary>
-    private static string? LoadedVersion()
+    /// <summary>The version the layer logged while a bare instance was made; null when it did not start with Nightcast's profile.</summary>
+    private string? LoadedVersion()
     {
-        var version = new LsfgVersionInfo { StructureType = LsfgVersionInfo.Type };
-        var info = new VulkanInstanceCreateInfo { StructureType = VulkanInstanceCreateInfo.Type, Next = &version };
+        long before = LsfgVkLog.Length(_logPath);
+        var info = new VulkanInstanceCreateInfo { StructureType = VulkanInstanceCreateInfo.Type };
         nint instance = 0;
 
         if (VulkanMethods.CreateInstance(&info, null, &instance) == VulkanMethods.Success)
@@ -90,11 +100,6 @@ public sealed unsafe class VulkanLayerProbe : ILayerProbe
             VulkanMethods.DestroyInstance(instance, null);
         }
 
-        if (version.Version is null)
-        {
-            return null;
-        }
-
-        return Marshal.PtrToStringUTF8((nint)version.Version);
+        return LsfgVkLog.LoadedVersion(LsfgVkLog.ReadFrom(_logPath, before));
     }
 }

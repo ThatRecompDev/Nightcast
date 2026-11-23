@@ -194,7 +194,7 @@ public static class DesktopProgram
 
         var installer = new LsfgVkInstaller(folders, new HttpArchiveSource(), new XzDecompressor(), LsfgVkRelease.Sha256);
         var lossless = LsfgVkLossless.Find(LinuxSteamLibraries.Below(home));
-        var lsfgVk = new LsfgVkFrameGeneration(folders, lossless, installer, new LibcEnvironment(), new VulkanLayerProbe(), new LsfgVkChoiceStore(store));
+        var lsfgVk = new LsfgVkFrameGeneration(folders, lossless, installer, new LibcEnvironment(), new VulkanLayerProbe(folders.LogPath), new LsfgVkChoiceStore(store));
         await lsfgVk.StartAsync(cancellation);
 
         Console.WriteLine($"Frame generation: {lsfgVk.Describe(LsfgVkStartWord)}. {LsfgVkRelease.Notice}");

@@ -154,6 +154,39 @@ public sealed class LsfgVkFrameGenerationTests : IDisposable
         Assert.Equal(2, _source.Downloads);
     }
 
+    [Fact]
+    public async Task A_start_that_crashed_with_the_layer_turns_it_off_with_its_error_and_loads_nothing()
+    {
+        Remember(FrameGeneration.QualityDoubled);
+        await Make(new FakeProbe(_environment, Loaded)).StartAsync(CancellationToken.None);
+        File.WriteAllText(_folders.LogPath, "(lsfg-vk) [ERROR]: An error occured while initializing the lsfg-vk swapchain:\n(lsfg-vk) [ERROR]: - vk::PhysicalDevice::createDeviceUnique: -7\n");
+
+        // That start never confirmed a stream: the next one leaves the layer out.
+        var probe = new FakeProbe(_environment, Loaded);
+        var next = Make(probe);
+        await next.StartAsync(CancellationToken.None);
+
+        Assert.Equal(LsfgVkState.Failed, next.State);
+        Assert.False(next.Remembered.IsOn);
+        Assert.False(new LsfgVkChoiceStore(_store).Load().IsOn);
+        Assert.Empty(probe.Seen);
+        Assert.Contains("createDeviceUnique: -7", next.Describe("LSFG x2"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_start_whose_stream_ran_loads_the_layer_again_next_time()
+    {
+        Remember(FrameGeneration.QualityDoubled);
+        var first = Make(new FakeProbe(_environment, Loaded));
+        await first.StartAsync(CancellationToken.None);
+        first.Confirm();
+
+        var next = Make(new FakeProbe(_environment, Loaded));
+        await next.StartAsync(CancellationToken.None);
+
+        Assert.Equal(LsfgVkState.Loaded, next.State);
+    }
+
     private void Remember(FrameGeneration settings)
     {
         new LsfgVkChoiceStore(_store).Save(settings);

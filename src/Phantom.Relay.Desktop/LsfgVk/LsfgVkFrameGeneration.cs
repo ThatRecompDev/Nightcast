@@ -45,7 +45,7 @@ public sealed class LsfgVkFrameGeneration : IExternalFrameGeneration
         Remembered = _chosen;
     }
 
-    public FrameGeneration Remembered { get; }
+    public FrameGeneration Remembered { get; private set; }
 
     public LsfgVkState State
     {
@@ -87,6 +87,11 @@ public sealed class LsfgVkFrameGeneration : IExternalFrameGeneration
         }
 
         if (!Remembered.IsOn)
+        {
+            return;
+        }
+
+        if (CrashedLastTime())
         {
             return;
         }
@@ -160,9 +165,39 @@ public sealed class LsfgVkFrameGeneration : IExternalFrameGeneration
         };
     }
 
+    /// <summary>A stream ran with the layer: the start that loaded it did not crash, so the next one loads it again.</summary>
+    public void Confirm()
+    {
+        LsfgVkStartGuard.Clear(_folders.StartGuardPath);
+    }
+
+    /// <summary>
+    /// The last start loaded the layer and never reached a running stream (it crashed, as when lsfg-vk cannot make its
+    /// swapchain): the layer is not loaded now and the kept choice goes off, with lsfg-vk's own last error to show, so
+    /// a failing layer never keeps Nightcast from starting.
+    /// </summary>
+    private bool CrashedLastTime()
+    {
+        if (!LsfgVkStartGuard.Pending(_folders.StartGuardPath))
+        {
+            return false;
+        }
+
+        LsfgVkStartGuard.Clear(_folders.StartGuardPath);
+        _choices.Save(FrameGeneration.Off);
+        _chosen = FrameGeneration.Off;
+        Remembered = FrameGeneration.Off;
+
+        string reason = LsfgVkLog.LastError(LsfgVkLog.ReadFrom(_folders.LogPath, 0)) ?? "no error in its log";
+        Set(LsfgVkState.Failed, $"it stopped Nightcast at the last start ({reason}); it is off now, turn it on in the menu to try again");
+
+        return true;
+    }
+
     /// <summary>The variables set, then the loader asked; an older loader gets the data folder too, and is asked again.</summary>
     private void Load()
     {
+        LsfgVkStartGuard.Set(_folders.StartGuardPath);
         LsfgVkEnvironment.Apply(_environment, _folders);
         var check = _probe.Check();
 

@@ -56,6 +56,9 @@ public sealed class StreamApplication : IApplication
     private const float Percent = 100f;
     private const int LevelCount = 4;
 
+    /// <summary>NOT DATA: how many streaming stats snapshots (about one a second) confirm a start with external frame generation.</summary>
+    private const int ConfirmSnapshots = 5;
+
     /// <summary>
     /// NOT DATA: the longest a frame waits for a new picture while only new pictures are presented; a stream without
     /// one for longer (paused, a loading screen that does not move) still shows its window and takes its input.
@@ -91,6 +94,8 @@ public sealed class StreamApplication : IApplication
     private PictureFit _fit = PictureFit.Bars;
     private XboxPadState _sent;
     private IExternalFrameGeneration? _external;
+    private bool _externalConfirmed;
+    private int _streamingSnapshots;
     private TimeSpan? _restartAt;
 
     private TimeSpan _now;
@@ -830,6 +835,7 @@ public sealed class StreamApplication : IApplication
         }
 
         _shownStats = stats;
+        ConfirmExternal(stats);
         var present = _meter.Take();
 
         if (_statsLevel == StatsLevel.Off)
@@ -847,6 +853,26 @@ public sealed class StreamApplication : IApplication
         if (_log.IsEnabled(LogLevel.Information))
         {
             _log.Stats(StatsText.WithStats(stats, present, report, upscale));
+        }
+    }
+
+    /// <summary>
+    /// Once the stream has decoded pictures for <see cref="ConfirmSnapshots"/> snapshots (about a second each), the
+    /// external frame generator is told the start with it went well.
+    /// </summary>
+    private void ConfirmExternal(StreamStats stats)
+    {
+        if (_external is null || _externalConfirmed || stats.State != StreamState.Streaming || !(stats.FramesDecodedPerSecond > 0))
+        {
+            return;
+        }
+
+        _streamingSnapshots++;
+
+        if (_streamingSnapshots >= ConfirmSnapshots)
+        {
+            _externalConfirmed = true;
+            _external.Confirm();
         }
     }
 

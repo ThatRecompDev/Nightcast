@@ -15,6 +15,7 @@ public sealed record LsfgVkFolders(string Base)
     private const string ToolFolder = "lsfg-vk";
     private const string ConfigFile = "conf.toml";
     private const string LogFile = "lsfg-vk.log";
+    private const string StartGuardFile = "starting";
     private const string DownloadSuffix = ".download";
     private const string TarSuffix = ".tar";
     private const string PartialSuffix = ".partial";
@@ -37,6 +38,9 @@ public sealed record LsfgVkFolders(string Base)
 
     /// <summary>Where the layer writes its log (the configuration's <c>log_file</c>).</summary>
     public string LogPath => Path.Combine(Base, LogFile);
+
+    /// <summary>Set before a start loads the layer, removed once a stream ran with it: still there, that start crashed.</summary>
+    public string StartGuardPath => Path.Combine(Base, StartGuardFile);
 
     /// <summary>The archive while it downloads.</summary>
     public string DownloadPath => Path.Combine(Base, $"lsfg-vk-{LsfgVkRelease.Version}{DownloadSuffix}");

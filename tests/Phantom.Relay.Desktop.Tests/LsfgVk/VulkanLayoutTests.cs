@@ -9,13 +9,11 @@ namespace Phantom.Relay.Desktop.Tests.LsfgVk;
 public sealed class VulkanLayoutTests
 {
     [Fact]
-    public unsafe void The_create_info_the_layer_properties_and_lsfg_vks_version_query_have_Cs_sizes_and_offsets()
+    public unsafe void The_create_info_and_the_layer_properties_have_Cs_sizes_and_offsets()
     {
         Assert.Equal(64, sizeof(VulkanInstanceCreateInfo));
         Assert.Equal(520, sizeof(VulkanLayerProperties));
-        Assert.Equal(24, sizeof(LsfgVersionInfo));
         Assert.Equal(8, Marshal.OffsetOf<VulkanInstanceCreateInfo>(nameof(VulkanInstanceCreateInfo.Next)).ToInt32());
         Assert.Equal(56, Marshal.OffsetOf<VulkanInstanceCreateInfo>(nameof(VulkanInstanceCreateInfo.EnabledExtensionNames)).ToInt32());
-        Assert.Equal(16, Marshal.OffsetOf<LsfgVersionInfo>(nameof(LsfgVersionInfo.Version)).ToInt32());
     }
 }

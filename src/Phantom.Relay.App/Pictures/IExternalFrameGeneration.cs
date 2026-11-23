@@ -35,6 +35,12 @@ public interface IExternalFrameGeneration
     void Use(FrameGeneration settings);
 
     /// <summary>
+    /// A stream has run for a few seconds with it (render thread, once): the start that loaded it did not crash, so the
+    /// next one may load it again.
+    /// </summary>
+    void Confirm();
+
+    /// <summary>
     /// The menu row's and the stats' text: what runs (<paramref name="chosen"/> is the switch's own description of the
     /// choice), or why nothing does (off, being downloaded, no Lossless Scaling, the layer not loaded).
     /// </summary>
