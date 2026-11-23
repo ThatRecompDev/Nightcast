@@ -1,18 +1,19 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Globalization;
+using Phantom.Relay.Stream.Setup;
 
 namespace Phantom.Relay.Desktop.Recording;
 
 /// <summary>
 /// Where a recording goes and what its files are called: a folder per recording under the user's Videos folder,
-/// <c>Videos\Phantom.Relay\2026-11-20 21-14-03</c> (the local time it started; " (2)" and on when one of that second
+/// <c>Videos\Nightcast\2026-11-20 21-14-03</c> (the local time it started; " (2)" and on when one of that second
 /// exists), never under the repository.
 /// </summary>
 internal static class RecordingFolder
 {
     /// <summary>The folder every recording's own folder is in, under the user's Videos folder.</summary>
-    public const string AppFolder = "Phantom.Relay";
+    public const string AppFolder = RelayApp.Name;
 
     /// <summary>The console's H.264 as it came, remuxed without re-encoding.</summary>
     public const string SourceFile = "source.mp4";

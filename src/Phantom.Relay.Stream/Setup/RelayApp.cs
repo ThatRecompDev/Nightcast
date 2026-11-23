@@ -7,5 +7,5 @@ public static class RelayApp
 {
     public const string Id = "phantom.relay";
 
-    public const string Name = "Phantom.Relay";
+    public const string Name = "Nightcast";
 }

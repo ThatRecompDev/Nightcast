@@ -46,7 +46,7 @@ public sealed class StatsTextTests
         {
             string title = StatsText.WithStats(Streaming, Present, GpuPictureReport.Idle with { Path = GpuPictureReport.ZeroCopy });
 
-            Assert.Equal("Phantom.Relay | 2560x1440 | 60 fps in, 59 decoded (30 new, 30 repeated, every other repeated) | decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms | to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms | GPU zero-copy | frame generation off | video 14.0 Mbit/s, sound 0.13 Mbit/s | RTT 0.4 ms | DTLS 73.0 ms | lost 2, PLI 1, pad reports 40", title);
+            Assert.Equal("Nightcast | 2560x1440 | 60 fps in, 59 decoded (30 new, 30 repeated, every other repeated) | decode 8.1 ms avg, 41.5 ms worst, hand-off 0.3 ms | to screen 6.2 ms avg, 9.5 ms worst, picture CPU 0.1 ms | GPU zero-copy | frame generation off | video 14.0 Mbit/s, sound 0.13 Mbit/s | RTT 0.4 ms | DTLS 73.0 ms | lost 2, PLI 1, pad reports 40", title);
         }
         finally
         {
@@ -75,7 +75,7 @@ public sealed class StatsTextTests
 
         string title = StatsText.Title(Streaming, Present, report);
 
-        Assert.Equal("Phantom.Relay | 60 fps, 30 new | to screen 6.2 ms | GPU zero-copy | LSFG x2 (quality) 0.8 ms | RTT 0.4 ms | lost 2", title);
+        Assert.Equal("Nightcast | 60 fps, 30 new | to screen 6.2 ms | GPU zero-copy | LSFG x2 (quality) 0.8 ms | RTT 0.4 ms | lost 2 | 14.0 Mbit/s", title);
         Assert.True(Encoding.UTF8.GetByteCount(title) <= StatsText.MaxTitleBytes);
     }
 
@@ -106,9 +106,9 @@ public sealed class StatsTextTests
     [Fact]
     public void Without_stats_the_title_names_the_state_until_it_streams()
     {
-        Assert.Equal("Phantom.Relay", StatsText.Plain(Streaming));
-        Assert.Equal("Phantom.Relay: Connecting", StatsText.Plain(StreamStats.Idle with { State = StreamState.Connecting }));
-        Assert.Equal("Phantom.Relay: failed: ICE found no path to the console", StatsText.Plain(StreamStats.Idle with { State = StreamState.Failed, FailureReason = "ICE found no path to the console" }));
+        Assert.Equal("Nightcast", StatsText.Plain(Streaming));
+        Assert.Equal("Nightcast: Connecting", StatsText.Plain(StreamStats.Idle with { State = StreamState.Connecting }));
+        Assert.Equal("Nightcast: failed: ICE found no path to the console", StatsText.Plain(StreamStats.Idle with { State = StreamState.Failed, FailureReason = "ICE found no path to the console" }));
     }
 
     [Fact]

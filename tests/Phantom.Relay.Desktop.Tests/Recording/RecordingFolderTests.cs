@@ -19,7 +19,7 @@ public sealed class RecordingFolderTests
     {
         var folder = RecordingFolder.For("videos", Start, _ => false);
 
-        Assert.Equal(Path.Combine("videos", "Phantom.Relay", "2026-11-20 21-04-03"), folder);
+        Assert.Equal(Path.Combine("videos", "Nightcast", "2026-11-20 21-04-03"), folder);
     }
 
     [Fact]
@@ -27,20 +27,20 @@ public sealed class RecordingFolderTests
     {
         var taken = new HashSet<string>
         {
-            Path.Combine("videos", "Phantom.Relay", "2026-11-20 21-04-03"),
-            Path.Combine("videos", "Phantom.Relay", "2026-11-20 21-04-03 (2)"),
+            Path.Combine("videos", "Nightcast", "2026-11-20 21-04-03"),
+            Path.Combine("videos", "Nightcast", "2026-11-20 21-04-03 (2)"),
         };
 
         var folder = RecordingFolder.For("videos", Start, taken.Contains);
 
-        Assert.Equal(Path.Combine("videos", "Phantom.Relay", "2026-11-20 21-04-03 (3)"), folder);
+        Assert.Equal(Path.Combine("videos", "Nightcast", "2026-11-20 21-04-03 (3)"), folder);
     }
 
     [Fact]
     public void The_window_shows_the_folder_shortened()
     {
-        var shown = RecordingFolder.Short(Path.Combine("videos", "Phantom.Relay", "2026-11-20 21-04-03"));
+        var shown = RecordingFolder.Short(Path.Combine("videos", "Nightcast", "2026-11-20 21-04-03"));
 
-        Assert.Equal(Path.Combine("…", "Phantom.Relay", "2026-11-20 21-04-03"), shown);
+        Assert.Equal(Path.Combine("…", "Nightcast", "2026-11-20 21-04-03"), shown);
     }
 }

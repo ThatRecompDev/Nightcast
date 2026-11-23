@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.Stream.Setup;
 using Phantom.Relay.Xbox.Input;
 
 namespace Phantom.Relay.App.Input;
@@ -12,7 +13,7 @@ namespace Phantom.Relay.App.Input;
 /// </summary>
 public sealed class PadMenu
 {
-    private const string Title = "Phantom.Relay  (D-pad: choose, A: change, B: back)";
+    private static readonly string Title = $"{RelayApp.Name}  (D-pad: choose, A: change, B: back)";
     private const string Pointer = "> ";
     private const string Blank = "  ";
     private const int LabelWidth = 20;

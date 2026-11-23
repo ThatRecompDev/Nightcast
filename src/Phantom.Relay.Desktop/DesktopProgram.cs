@@ -29,6 +29,7 @@ using Phantom.Relay.Audio;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Recording;
 using Phantom.Relay.Desktop.Setup;
+using Phantom.Relay.Desktop.Updates;
 using Phantom.Relay.Desktop.Windowing;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Media.Windows;
@@ -53,7 +54,8 @@ namespace Phantom.Relay.Desktop;
 /// the bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
 /// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
 /// <c>--no-feedback</c> turns it off. The window starts fullscreen (borderless, <see cref="BorderlessFullscreen"/>);
-/// <c>--windowed</c> starts it as a window. With one console it connects without asking.
+/// <c>--windowed</c> starts it as a window. With one console it connects without asking. A published build updates
+/// itself from Nightcast's public releases at start (<see cref="SelfUpdater"/>); <c>--no-update</c> skips it.
 /// Tokens stay in the user's own store, never in the output.
 /// </summary>
 public static class DesktopProgram
@@ -66,6 +68,7 @@ public static class DesktopProgram
     private const string SignOutArgument = "--sign-out";
     private const string NoFeedbackArgument = "--no-feedback";
     private const string WindowedArgument = "--windowed";
+    private const string NoUpdateArgument = "--no-update";
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
 
@@ -93,7 +96,7 @@ public static class DesktopProgram
     {
         if (!BitrateFeedbackArguments.TryParse(args, out var asked, out string? wrong))
         {
-            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}");
+            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}, {NoUpdateArgument}");
 
             return Refused;
         }
@@ -106,6 +109,12 @@ public static class DesktopProgram
             press.Cancel = true;
             cancellation.Cancel();
         };
+
+        // A published build first takes a newer release, and starts that in its place.
+        if (!args.Contains(NoUpdateArgument) && await SelfUpdater.TryUpdateAsync(Environment.ProcessPath, typeof(DesktopProgram).Assembly.GetName().Version, args, Console.Out, cancellation.Token))
+        {
+            return Succeeded;
+        }
 
         var clock = TimeProvider.System;
         var store = UserStorage.Open(PersistentArea.ForApp(RelayApp.Id));

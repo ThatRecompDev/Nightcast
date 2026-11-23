@@ -17,12 +17,17 @@ Never in this repository: account tokens or refresh tokens, captures of a real s
 ids, gamertags, user hashes, e-mail addresses, absolute paths, or anything a Microsoft service sent that identifies an
 account. Tests build their payloads by hand from the shapes in the guides.
 
-## 1a. Personal use only
+## 1a. Public builds, private source
 
-Relay is the owner's personal tool and is never released publicly: no published builds, packages, store listings,
-public repository or remote other than the owner's own. Third-party software it can use at run time (Lossless
-Scaling's frame generation, under the owner's personal-use permission) is loaded from the owner's own install and is
-never copied into the repository.
+The owner's decision of 2026-11-23: the desktop app is released publicly as **Nightcast**, as built exes on a
+public GitHub repository that holds only a README and its releases (`scripts/publish/publish-desktop.ps1 -Release`);
+the app updates itself from that repository's latest release. The source stays in the owner's local git, with no
+remote, and is never pushed anywhere. A release carries nothing of the owner's: no token, credential, console id,
+gamertag, e-mail, user name or path of the owner's machines (the build maps its paths away, and the binaries are
+scanned before upload). Third-party software the app can use at run time (Lossless Scaling's frame generation and
+upscalers, NVIDIA's Optical Flow SDK for FRUC) is never in the repository or a release: each user's own install is
+found at run time (Lossless Scaling through Steam or a configured folder). Nightcast uses no Xbox name or branding
+and says it is unofficial.
 
 ## 2. The engine comes first
 
