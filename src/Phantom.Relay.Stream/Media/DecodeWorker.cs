@@ -25,6 +25,7 @@ public sealed class DecodeWorker : IDisposable
     private readonly AccessUnitTap _tap;
     private readonly TimeProvider _clock;
     private readonly NewPictureSignal _signal;
+    private readonly PictureGrab _stills;
     private readonly RepeatClassifier _repeats = new(RepeatSettings.Standard);
     private readonly Thread _thread;
     private readonly int[] _sizes = new int[SizeHistory];
@@ -47,15 +48,17 @@ public sealed class DecodeWorker : IDisposable
 
     /// <summary>
     /// The <paramref name="tap"/> sees every unit on this worker's thread and carries key-frame requests to the network
-    /// thread; <paramref name="signal"/> hears of each new picture handed to the renderer.
+    /// thread; <paramref name="signal"/> hears of each new picture handed to the renderer; a screenshot's request in
+    /// <paramref name="stills"/> gets a copy of the next picture.
     /// </summary>
-    public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, NewPictureSignal signal, TimeProvider clock)
+    public DecodeWorker(IVideoDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, NewPictureSignal signal, PictureGrab stills, TimeProvider clock)
     {
         _decoder = decoder;
         _gpu = decoder as IGpuPictureProducer;
         _mailbox = mailbox;
         _tap = tap;
         _signal = signal;
+        _stills = stills;
 
         _clock = clock;
         _thread = new Thread(Run) { IsBackground = true, Name = "Relay video decode" };
@@ -199,6 +202,7 @@ public sealed class DecodeWorker : IDisposable
                 Volatile.Write(ref _width, width);
                 Volatile.Write(ref _height, height);
                 Interlocked.Increment(ref _pictures);
+                GrabFromGpu();
             }
 
             return;
@@ -208,8 +212,38 @@ public sealed class DecodeWorker : IDisposable
         {
             Volatile.Write(ref _width, _mailbox.Back.Width);
             Volatile.Write(ref _height, _mailbox.Back.Height);
+            GrabCopy(_mailbox.Back);
             _mailbox.Publish(decoded);
             Interlocked.Increment(ref _pictures);
+        }
+    }
+
+    // A screenshot asked for a picture: a copy of the one read back, before the mailbox hands it on.
+    private void GrabCopy(VideoFrame picture)
+    {
+        if (!_stills.IsWanted)
+        {
+            return;
+        }
+
+        var still = new VideoFrame();
+        PictureGrab.Copy(picture, still);
+        _stills.Complete(still);
+    }
+
+    // A screenshot asked for a picture on the GPU path: the decoded picture read back once.
+    private void GrabFromGpu()
+    {
+        if (!_stills.IsWanted)
+        {
+            return;
+        }
+
+        var still = new VideoFrame();
+
+        if (_gpu!.TryReadBack(still))
+        {
+            _stills.Complete(still);
         }
     }
 

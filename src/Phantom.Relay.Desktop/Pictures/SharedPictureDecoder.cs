@@ -196,6 +196,12 @@ internal sealed class SharedPictureDecoder : IVideoDecoder, IGpuPictureProducer,
         return published;
     }
 
+    /// <summary>The decoded picture of the last publish, read back for a screenshot (before its upscale or generated frames).</summary>
+    public bool TryReadBack(VideoFrame target)
+    {
+        return _decoder.TryReadSurface(target);
+    }
+
     public bool TryTake(out GpuPicture picture)
     {
         if (!_slots.TryTake(out picture))

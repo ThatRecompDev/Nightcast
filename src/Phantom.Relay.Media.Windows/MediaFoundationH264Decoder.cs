@@ -263,6 +263,30 @@ public sealed unsafe class MediaFoundationH264Decoder : IVideoDecoder
         return true;
     }
 
+    /// <summary>
+    /// The picture the last <see cref="TryTakeSurface"/> handed on, read back into <paramref name="target"/> through the
+    /// staging texture (waiting for the GPU), for a screenshot; valid until the next decode. False when there is none.
+    /// </summary>
+    public bool TryReadSurface(VideoFrame target)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        if (_device is null || _surface == 0 || !_device.TryCopy(_surface, _surfaceSlice))
+        {
+            return false;
+        }
+
+        if (!_device.TryRead(_format.Width, _format.Height, target))
+        {
+            return false;
+        }
+
+        target.Colour = PictureColour;
+
+        return true;
+    }
+
     /// <summary>Forgets the stream, for a seek or a lost packet: the next access unit must be a key frame.</summary>
     public void Flush()
     {

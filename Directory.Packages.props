@@ -14,6 +14,7 @@
     <PackageVersion Include="Phantom.Engine.Graphics" Version="0.83.3-relay.2" />
     <PackageVersion Include="Phantom.Engine.Graphics.Sokol" Version="0.83.3-relay.2" />
     <PackageVersion Include="Phantom.Engine.Hosting" Version="0.83.3-relay.2" />
+    <PackageVersion Include="Phantom.Engine.Imaging" Version="0.83.3-relay.2" />
     <PackageVersion Include="Phantom.Engine.Logging" Version="0.83.3-relay.2" />
     <PackageVersion Include="Phantom.Engine.Media" Version="0.83.3-relay.2" />
     <PackageVersion Include="Phantom.Engine.Media.Vpx" Version="0.83.3-relay.2" />

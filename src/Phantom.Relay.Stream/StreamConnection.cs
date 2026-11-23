@@ -68,6 +68,7 @@ public sealed class StreamConnection : IDisposable
     private readonly PictureMailbox _pictures = new();
     private readonly AccessUnitTap _units = new();
     private readonly NewPictureSignal _newPictures = new();
+    private readonly PictureGrab _stills = new();
     private readonly CancellationTokenSource _stop = new();
     private readonly StreamStatsMeter _meter;
 
@@ -113,6 +114,9 @@ public sealed class StreamConnection : IDisposable
 
     /// <summary>Where the render thread waits for the game's next new picture (a window presenting only new pictures).</summary>
     public NewPictureSignal NewPictures => _newPictures;
+
+    /// <summary>Where a screenshot asks for the next decoded picture, at the stream's own size (any thread).</summary>
+    public PictureGrab Stills => _stills;
 
     /// <summary>The decoder's pictures left on the GPU, when the head's decoder can share them with the renderer; else null.</summary>
     public IGpuPictureSource? GpuPictures => _decoder as IGpuPictureSource;
@@ -199,7 +203,7 @@ public sealed class StreamConnection : IDisposable
     private void Run(string serverId, StreamSettings settings)
     {
         StreamSession? session = null;
-        using var video = new DecodeWorker(_decoder, _pictures, _units, _newPictures, _clock);
+        using var video = new DecodeWorker(_decoder, _pictures, _units, _newPictures, _stills, _clock);
         video.Start();
 
         try

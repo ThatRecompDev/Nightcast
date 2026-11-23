@@ -1,5 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Engine.Media.Video;
+
 namespace Phantom.Relay.Stream.Media.Gpu;
 
 /// <summary>
@@ -25,4 +27,11 @@ public interface IGpuPictureProducer
     /// gave the picture, so the real interval between two new pictures is known whatever the network did.
     /// </summary>
     bool Publish(PictureKind kind, long decodedAt, uint rtpTimestamp, out int width, out int height);
+
+    /// <summary>
+    /// After <see cref="Publish"/>, for a screenshot (<see cref="PictureGrab"/>): reads the decoded picture back to the
+    /// CPU into <paramref name="target"/>, at its own size, before any upscaler or generated frame; it waits for the
+    /// GPU, so it runs only when asked. False when there is no picture to read.
+    /// </summary>
+    bool TryReadBack(VideoFrame target);
 }

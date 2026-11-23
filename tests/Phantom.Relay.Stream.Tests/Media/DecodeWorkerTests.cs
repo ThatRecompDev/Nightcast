@@ -54,7 +54,7 @@ public sealed class DecodeWorkerTests : IDisposable
     public void A_shared_picture_counts_with_its_size()
     {
         var decoder = new FakeGpuDecoder { IsSharing = true };
-        var worker = new DecodeWorker(decoder, new PictureMailbox(), new AccessUnitTap(), _signal, _clock);
+        var worker = new DecodeWorker(decoder, new PictureMailbox(), new AccessUnitTap(), _signal, new PictureGrab(), _clock);
         worker.Start();
         worker.Enqueue([0, 0, 0, 1, 0x65], 0, key: true);
 
@@ -75,9 +75,57 @@ public sealed class DecodeWorkerTests : IDisposable
         Assert.Equal([(5, 0u, true), (5, 1u, false), (5, 2u, false)], listener.Units);
     }
 
+    [Fact]
+    public async Task A_screenshot_on_the_gpu_path_reads_the_next_picture_back_once()
+    {
+        var decoder = new FakeGpuDecoder { IsSharing = true };
+        var stills = new PictureGrab();
+        var still = stills.Request()!;
+
+        Run(decoder, new PictureMailbox(), new AccessUnitTap(), stills, units: 2);
+
+        Assert.Equal(["prepare", "decode", "publish", "read back", "prepare", "decode", "publish"], decoder.Calls);
+        var picture = await still;
+
+        Assert.Equal(2, picture.Width);
+        Assert.False(stills.IsWanted);
+    }
+
+    [Fact]
+    public async Task A_screenshot_on_the_cpu_path_gets_a_copy_of_the_picture_read_back()
+    {
+        var decoder = new FakeGpuDecoder { GivesPictures = true };
+        var mailbox = new PictureMailbox();
+        var stills = new PictureGrab();
+        var still = stills.Request()!;
+
+        Run(decoder, mailbox, new AccessUnitTap(), stills, units: 1);
+
+        var picture = await still;
+
+        Assert.True(mailbox.TryTake());
+        Assert.NotSame(mailbox.Front, picture);
+        Assert.Equal(mailbox.Front.Luma.ToArray(), picture.Luma.ToArray());
+    }
+
+    [Fact]
+    public void Without_a_request_nothing_is_read_back()
+    {
+        var decoder = new FakeGpuDecoder { IsSharing = true };
+
+        Run(decoder, new PictureMailbox(), new AccessUnitTap(), units: 1);
+
+        Assert.DoesNotContain("read back", decoder.Calls);
+    }
+
     private void Run(FakeGpuDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, int units)
     {
-        var worker = new DecodeWorker(decoder, mailbox, tap, _signal, _clock);
+        Run(decoder, mailbox, tap, new PictureGrab(), units);
+    }
+
+    private void Run(FakeGpuDecoder decoder, PictureMailbox mailbox, AccessUnitTap tap, PictureGrab stills, int units)
+    {
+        var worker = new DecodeWorker(decoder, mailbox, tap, _signal, stills, _clock);
         worker.Start();
 
         for (var unit = 0; unit < units; unit++)
