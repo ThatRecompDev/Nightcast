@@ -26,6 +26,7 @@ using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Recording;
 using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
+using Phantom.Relay.Desktop.Fonts;
 using Phantom.Relay.Desktop.Logging;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Recording;
@@ -72,6 +73,8 @@ public static class DesktopProgram
     private const string NoFeedbackArgument = "--no-feedback";
     private const string WindowedArgument = "--windowed";
     private const string NoUpdateArgument = "--no-update";
+    private const string HomeVariable = "HOME";
+    private const string DataHomeVariable = "XDG_DATA_HOME";
     private const int WindowWidth = 1280;
     private const int WindowHeight = 720;
 
@@ -384,8 +387,14 @@ public static class DesktopProgram
     {
         using var pads = new EvdevPads(Environment.GetEnvironmentVariable(EvdevPads.IgnoreVariable));
         pads.Start();
-        Run(connection, recorder, profile, pads, new NoSystemFonts(), new WindowedOnly(), pump, clock, log);
+        Run(connection, recorder, profile, pads, LinuxFonts(), new WindowedOnly(), pump, clock, log);
         pads.Stop();
+    }
+
+    /// <summary>The fonts under fontconfig's folders, the user's own first.</summary>
+    private static LinuxSystemFonts LinuxFonts()
+    {
+        return new LinuxSystemFonts(LinuxSystemFonts.Folders(Environment.GetEnvironmentVariable(HomeVariable), Environment.GetEnvironmentVariable(DataHomeVariable)));
     }
 
     /// <summary>Windows' pads and fonts, and its borderless fullscreen, started in it when <paramref name="fullscreen"/>.</summary>
