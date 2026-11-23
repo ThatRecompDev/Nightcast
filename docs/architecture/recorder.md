@@ -63,7 +63,8 @@ made, and recording.txt and the log say so.
 **Stop.** F9 (or closing the window) lets go of both taps and finishes on a thread of its own: both queues drained, both
 files finished and read back (`Mp4Reader`, the source reader: frames, key frames, size, length, codec), recording.txt
 written, the window showing `saved to …\Phantom.Relay\<stamp>`. Closing the window waits, after it closed, for a
-recording still being finished (the console says so).
+recording still being finished (the console says so). Once saved, before the comparison, the recorder writes an empty
+`done` file into the folder, the mark a program watching it waits for ([screenshots](screenshots.md)).
 
 **Comparison.** ffmpeg is the user's own, found at run time (`FfmpegLocator`: the PATH, else
 `%USERPROFILE%\scoop\apps\ffmpeg\current\bin\ffmpeg.exe`), never bundled; without it the comparison is skipped with the
