@@ -5,10 +5,11 @@ Nightcast runs natively on Linux as `Nightcast-linux-x64`: one self-contained fi
 SteamOS on a handheld (the owner's ROG Ally: AMD Z1 Extreme) in Steam's Gaming Mode, where gamescope shows the window
 fullscreen through XWayland and Steam Input owns the controls.
 
-**Status (2026-11-23): built and unit-tested on Windows only; nothing below has run on a Linux machine yet.** The
-window, the sound and openh264 need the engine's linux-x64 native libraries (`phantom_gfx` on Dawn/Vulkan, ALSA sound,
-the media libraries), which arrive with engine version 0.83.3-relay.2; until Relay pins that version the Linux file
-builds but cannot open its window.
+**Status (2026-11-23): built and unit-tested on Windows only; nothing below has run on a Linux machine yet.** Since
+engine 0.83.3-relay.2 the Linux file carries the engine's linux-x64 native libraries inside it (`libphantom_gfx.so` on
+Dawn/Vulkan and X11, `libphantom_audio.so` on ALSA, `libphantom_media.so`; glibc 2.35 or later) beside FFmpeg's two
+libraries. On Linux the engine compiles out its frame pacing, its shader cache and shared D3D textures, and its
+XInput pads and GDI fonts are Windows-only, hence Nightcast's own Linux pads and fonts below.
 
 ## Running it in Gaming Mode
 
