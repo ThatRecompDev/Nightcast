@@ -26,6 +26,7 @@ using Phantom.Relay.App.Input;
 using Phantom.Relay.App.Recording;
 using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
+using Phantom.Relay.Desktop.Logging;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Recording;
 using Phantom.Relay.Desktop.Setup;
@@ -190,7 +191,15 @@ public static class DesktopProgram
     {
         // The log: the engine's ring, written to the console's error stream after every frame.
         using var logs = new RingLoggerFactory(LogOptions.Default, clock);
-        var pump = new LogPump(logs, ImmutableArray.Create<ILogSink>(new TextLogSink(Console.Error)));
+        using var logFile = LogFiles.Open(clock.GetLocalNow());
+        var sinks = ImmutableArray.Create<ILogSink>(new TextLogSink(Console.Error));
+
+        if (logFile is not null)
+        {
+            sinks = sinks.Add(new TextLogSink(logFile));
+        }
+
+        var pump = new LogPump(logs, sinks);
 
         uint? hostAddress = LocalAddress.Find();
         var shown = new ShownPictureTap();
@@ -218,9 +227,11 @@ public static class DesktopProgram
         // The stream itself, on its own network thread.
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         using var connection = new StreamConnection(sessions, transport, doorbell, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
+        using var closing = new ConsoleClosing(connection);
         var recorder = new StreamRecorder(connection, shown, RecordingPlaces.Find(), clock, new Logger<StreamRecorder>(logs));
+
         Console.WriteLine(LosslessScalingLine());
-        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats, F9 records, F11 fullscreen; Escape (or View+Menu held) ends.");
+        Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. View+Menu opens the menu; Escape (or View+Menu held) ends.");
         connection.Start(console.ServerId, settings, feedback);
 
         RunWindow(connection, recorder, ProfileChoice.For(profiles, null), fullscreen, pump, clock, new Logger<StreamApplication>(logs));

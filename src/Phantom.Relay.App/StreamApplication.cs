@@ -75,6 +75,7 @@ public sealed class StreamApplication : IApplication
     private readonly PadMenu _menu = new();
     private readonly StatsOverlay _menuOverlay;
     private PictureFit _fit = PictureFit.Bars;
+    private XboxPadState _sent;
 
     private TimeSpan _now;
     private string? _recording;
@@ -621,6 +622,7 @@ public sealed class StreamApplication : IApplication
         _now += TimeSpan.FromSeconds(seconds);
         var composed = _pads.Compose(input, (float)seconds);
         var pad = FollowPadMenu(in composed);
+        _sent = pad;
 
         if (_reports.ShouldSend(in pad, input.Focused, _now, out var report))
         {
@@ -665,12 +667,25 @@ public sealed class StreamApplication : IApplication
         var report = Report();
         var upscale = _picture.Describe(report.Upscale);
         _window.SetTitle(StatsText.Clamp(WithRecording(StatsText.Title(stats, present, report, upscale))));
-        _overlay.Show(WithRecording(StatsText.Lines(stats, present, report, _pads.Source, upscale)));
+        _overlay.Show(WithRecording([.. StatsText.Lines(stats, present, report, _pads.Source, upscale), SentLine()]));
 
         if (_log.IsEnabled(LogLevel.Information))
         {
             _log.Stats(StatsText.WithStats(stats, present, report, upscale));
         }
+    }
+
+    /// <summary>
+    /// What goes to the console as pad 0 right now, and from which physical pad: the stick moving here while the game
+    /// stands still means the console is not taking the pad, not that the pad is not read.
+    /// </summary>
+    private string SentLine()
+    {
+        var pad = _sent;
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"sent: {pad.Buttons}, left stick {pad.LeftX:0.00} {pad.LeftY:0.00}, triggers {pad.LeftTrigger:0.00} {pad.RightTrigger:0.00} (pad slot {_pads.PlayedSlot})");
     }
 
     /// <summary>The title with the stats hidden: the plain one, and what F4 to F7 chose once they were used.</summary>

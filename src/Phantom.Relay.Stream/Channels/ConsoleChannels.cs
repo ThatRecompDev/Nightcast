@@ -83,6 +83,37 @@ public sealed class ConsoleChannels
         CultureInfo.InvariantCulture,
         $"SCTP {_association.CloseReason}, abort cause {_association.PeerAbortCause}, {_association.TimeoutsInARow} data timeouts in a row");
 
+    /// <summary>True when the console acknowledged everything sent on the channels (after <see cref="Leave"/>).</summary>
+    public bool Delivered => _association.AllAcknowledged;
+
+    /// <summary>
+    /// Before the session ends: every pad announced is removed on the control channel, as when a pad is unplugged, so
+    /// the console does not keep a phantom controller signed in for the next stream to queue behind. False when the
+    /// control channel is not open (the console already closed it): nothing to say.
+    /// </summary>
+    public bool Leave()
+    {
+        var control = _control;
+
+        if (control is null || control.State != DataChannelState.Open || _association.State != SctpAssociationState.Established)
+        {
+            return false;
+        }
+
+        for (int index = 0; index < _announced.Length; index++)
+        {
+            if (_announced[index])
+            {
+                SendText(control, ControlMessages.GamepadChanged(index, false));
+                _announced[index] = false;
+            }
+        }
+
+        _association.Service();
+
+        return true;
+    }
+
     /// <summary>Starts the association; the channels are asked for once it is established.</summary>
     public void Open()
     {

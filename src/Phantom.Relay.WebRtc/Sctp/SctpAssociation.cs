@@ -73,6 +73,9 @@ public sealed class SctpAssociation
     /// <summary>Data retransmission timeouts in a row; a high count before a close means the peer stopped acknowledging.</summary>
     public int TimeoutsInARow => _sender.ErrorCount;
 
+    /// <summary>True when the peer acknowledged everything sent so far (nothing waits or is in flight).</summary>
+    public bool AllAcknowledged => _sender.IsIdle && _sender.BufferedBytes == 0;
+
     /// <summary>True when the peer announced FORWARD TSN, so partially reliable messages can be given up.</summary>
     public bool PeerSupportsPartialReliability => _peer.ForwardTsn;
 

@@ -40,6 +40,9 @@ public sealed class StreamConnection : IDisposable
     private static readonly TimeSpan DtlsDeadline = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(1);
 
+    /// <summary>NOT DATA: how long the pads' goodbye may wait for the console's acknowledgement before the session ends.</summary>
+    private static readonly TimeSpan LeaveDeadline = TimeSpan.FromMilliseconds(500);
+
     /// <summary>
     /// The longest wait for a datagram while streaming. A wait that times out lasts a timer tick whatever is asked, so
     /// this only bounds how late the once-a-second work runs when the console falls silent; arrivals and pad changes
@@ -241,8 +244,33 @@ public sealed class StreamConnection : IDisposable
         }
 
         Publish(Stats with { State = StreamState.Streaming, IceRoundTrip = link.Ice.RoundTrip, DtlsTime = link.DtlsElapsed });
+        string? ended = Receive(session, link, video);
 
-        return Receive(session, link, video);
+        Leave(link);
+
+        return ended;
+    }
+
+    /// <summary>
+    /// The pads leave the console before the session ends (<see cref="Channels.ConsoleChannels.Leave"/>), and the link is pumped
+    /// until the console acknowledged it, at most <see cref="LeaveDeadline"/>, stop or not.
+    /// </summary>
+    private void Leave(ConsoleLink link)
+    {
+        var channels = link.Channels;
+
+        if (channels is null || !channels.Leave())
+        {
+            return;
+        }
+
+        long start = _clock.GetTimestamp();
+
+        while (!channels.Delivered && _clock.GetElapsedTime(start) < LeaveDeadline)
+        {
+            link.Pump();
+            WaitForWork();
+        }
     }
 
     /// <summary>The bitrate feedback offered and what of it the console's answer kept, for the live comparisons.</summary>
