@@ -22,6 +22,7 @@ public sealed class BorderlessFullscreen : IWindowMode
     private nint _window;
     private nint _windowedStyle;
     private Win32Rect _windowedPlace;
+    private bool _begun;
 
     /// <summary>The window goes fullscreen at <see cref="Begin"/> when <paramref name="startFullscreen"/>.</summary>
     public BorderlessFullscreen(bool startFullscreen)
@@ -31,8 +32,15 @@ public sealed class BorderlessFullscreen : IWindowMode
 
     public bool Fullscreen { get; private set; }
 
+    /// <summary>Once, when the window exists; later calls change nothing.</summary>
     public void Begin()
     {
+        if (_begun)
+        {
+            return;
+        }
+
+        _begun = true;
         _window = FindOwnWindow();
 
         if (_startFullscreen)

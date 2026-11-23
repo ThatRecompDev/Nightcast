@@ -69,6 +69,10 @@ public static class DesktopProgram
     private const string NoFeedbackArgument = "--no-feedback";
     private const string WindowedArgument = "--windowed";
     private const string NoUpdateArgument = "--no-update";
+    private const string HomeVariable = "HOME";
+
+    /// <summary>Where Steam keeps itself on Linux, below the home folder (SteamOS: the first; older installs: the second).</summary>
+    private static readonly string[] LinuxSteamFolders = [Path.Combine(".local", "share", "Steam"), Path.Combine(".steam", "steam")];
 
     /// <summary>Present only the game's new pictures from the start, for lsfg-vk or another external frame generator.</summary>
     private const string ExternalFrameGenerationArgument = "--external-frame-generation";
@@ -269,6 +273,7 @@ public static class DesktopProgram
         var application = new StreamApplication(parts.Device, parts.Window, connection, new ProfilePadComposer(profile), reports, parts.Fonts, parts.Motors, recorder, parts.Mode, run.Clock, log);
 
         application.PresentNewPicturesOnly(run.NewPicturesOnly);
+        application.DescribeExternalGeneration(ExternalGeneration());
         Console.WriteLine(LosslessScalingLine());
         Console.WriteLine($"Streaming {console.Name}, asking for {run.Settings.Resolution}, bitrate feedback {run.Feedback.Describe()}. View+Menu opens the menu; Escape (or View+Menu held) ends.");
         connection.Start(console.ServerId, run.Settings, run.Feedback);
@@ -281,7 +286,7 @@ public static class DesktopProgram
     {
         if (!OperatingSystem.IsWindows())
         {
-            return "LSFG, LS1, NVIDIA FRUC and recording are Windows-only; for frame generation here use lsfg-vk with F12 (new pictures only).";
+            return $"Lossless Scaling: {ExternalGeneration()}. LS1, NVIDIA FRUC and recording are Windows-only.";
         }
 
         var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, Phantom.Relay.Lsfg.LosslessLocator.SteamLibraries());
@@ -292,6 +297,48 @@ public static class DesktopProgram
         }
 
         return $"Lossless Scaling: found ({Path.GetDirectoryName(library)}); LSFG and LS1 are in the menu (View+Menu).";
+    }
+
+    /// <summary>
+    /// Off Windows, frame generation is lsfg-vk's (a Vulkan layer that reads the user's Lossless.dll): whether Steam's
+    /// libraries hold Lossless Scaling, for the menu's frame-generation row and the console.
+    /// </summary>
+    private static string ExternalGeneration()
+    {
+        var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, LinuxSteamLibraries());
+
+        if (library is null)
+        {
+            return "not found in Steam (lsfg-vk needs Lossless Scaling installed through Steam)";
+        }
+
+        return "found; turn on lsfg-vk (Decky) and New pictures only";
+    }
+
+    /// <summary>The Steam libraries of a Linux Steam (SteamOS's): its own folder and the ones its libraryfolders.vdf lists.</summary>
+    private static List<string> LinuxSteamLibraries()
+    {
+        var libraries = new List<string>();
+        string? home = Environment.GetEnvironmentVariable(HomeVariable);
+
+        if (string.IsNullOrEmpty(home))
+        {
+            return libraries;
+        }
+
+        foreach (var steam in LinuxSteamFolders)
+        {
+            var root = Path.Combine(home, steam);
+            var folders = Path.Combine(root, "steamapps", "libraryfolders.vdf");
+            libraries.Add(root);
+
+            if (File.Exists(folders))
+            {
+                libraries.AddRange(Phantom.Relay.Lsfg.LosslessLocator.ParseLibraryFolders(File.ReadAllText(folders)));
+            }
+        }
+
+        return libraries;
     }
 
     /// <summary>A recording stopped as the window closed is finished (and compared) before the decoder goes.</summary>

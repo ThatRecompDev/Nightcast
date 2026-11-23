@@ -23,7 +23,8 @@ namespace Phantom.Relay.Desktop.Windowing;
 /// The desktop's window on this thread until it closes, with the platform's pads, fonts and fullscreen: on Windows Xbox
 /// pads through XInput and PlayStation pads through HID (as one), Windows' fonts and its borderless fullscreen; on Linux
 /// every pad through evdev (on SteamOS Steam Input's virtual pad, the pads Steam lists as its own left alone), the fonts
-/// under fontconfig's folders, and the window as it opens (gamescope shows it fullscreen in Gaming Mode); elsewhere no
+/// under fontconfig's folders, and X11's fullscreen at the screen's own size (so gamescope does not scale a small
+/// window up); the mode takes effect on the first screen (<see cref="WindowModeStart"/>); elsewhere no
 /// pads and no fonts. The head's <c>build</c> makes the application from those parts; the log is drained after every frame.
 /// </summary>
 internal static class DesktopWindow
@@ -44,7 +45,7 @@ internal static class DesktopWindow
 
         if (OperatingSystem.IsLinux())
         {
-            RunWithLinuxPads(build, pump);
+            RunWithLinuxPads(build, fullscreen, pump);
 
             return;
         }
@@ -58,12 +59,14 @@ internal static class DesktopWindow
         return new LinuxSystemFonts(LinuxSystemFonts.Folders(Environment.GetEnvironmentVariable(HomeVariable), Environment.GetEnvironmentVariable(DataHomeVariable)));
     }
 
+    /// <summary>Linux's pads (evdev) and fonts, and its X11 fullscreen, started in it when <paramref name="fullscreen"/>.</summary>
     [SupportedOSPlatform("linux")]
-    private static void RunWithLinuxPads(Func<WindowParts, IApplication> build, LogPump pump)
+    private static void RunWithLinuxPads(Func<WindowParts, IApplication> build, bool fullscreen, LogPump pump)
     {
         using var pads = new EvdevPads(Environment.GetEnvironmentVariable(EvdevPads.IgnoreVariable));
+        using var mode = new X11Fullscreen(fullscreen);
         pads.Start();
-        Run(build, pads, LinuxFonts(), new WindowedOnly(), pump);
+        Run(build, pads, LinuxFonts(), mode, pump);
         pads.Stop();
     }
 
@@ -86,7 +89,8 @@ internal static class DesktopWindow
         var window = new SokolWindowHost();
         var device = new SokolDevice(SokolLimits.Default, NullLogger<SokolDevice>.Instance);
         var application = build(new WindowParts(device, window, fonts, pads as IGamepadFeedback, mode));
-        var driver = new ApplicationDriver(new LogDrainingApplication(application, pump), new InputFrame(InputLimits.Default), pads);
+        var started = new WindowModeStart(application, mode);
+        var driver = new ApplicationDriver(new LogDrainingApplication(started, pump), new InputFrame(InputLimits.Default), pads);
 
         SokolRunner.Run(driver, new SokolWindow(WindowWidth, WindowHeight, RelayApp.Name), SokolLimits.Default);
     }

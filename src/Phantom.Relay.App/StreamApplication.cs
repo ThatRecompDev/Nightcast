@@ -84,6 +84,7 @@ public sealed class StreamApplication : IApplication
     private readonly StatsOverlay _menuOverlay;
     private PictureFit _fit = PictureFit.Bars;
     private XboxPadState _sent;
+    private string _externalGeneration = "lsfg-vk (Decky) with New pictures only";
 
     private TimeSpan _now;
     private string? _recording;
@@ -127,6 +128,15 @@ public sealed class StreamApplication : IApplication
     /// second for a 30 fps game) and never a repeat. The engine presents every frame it runs, so this paces the frames
     /// rather than skipping presents: the pads are then read once a picture rather than once a refresh.
     /// </summary>
+    /// <summary>
+    /// What the frame-generation row says where Nightcast's own frame generation cannot run (off Windows): the head's
+    /// word on the external one, e.g. whether Lossless Scaling, which lsfg-vk uses, was found.
+    /// </summary>
+    public void DescribeExternalGeneration(string description)
+    {
+        _externalGeneration = description;
+    }
+
     public void PresentNewPicturesOnly(bool on)
     {
         _newPicturesOnly = on;
@@ -537,7 +547,7 @@ public sealed class StreamApplication : IApplication
     {
         if (_stream.GpuPictures is null)
         {
-            return "not here (Windows only; F12 for lsfg-vk)";
+            return _externalGeneration;
         }
 
         return _generation.Describe(_stream.Stats.NewPicturesPerSecond);
