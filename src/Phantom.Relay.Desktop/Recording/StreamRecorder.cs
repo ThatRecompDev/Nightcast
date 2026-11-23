@@ -17,6 +17,9 @@ namespace Phantom.Relay.Desktop.Recording;
 internal sealed class StreamRecorder : IStreamRecorder
 {
     private const string NothingYet = "nothing to record yet: no picture was decoded";
+
+    /// <summary>The recorder writes through Media Foundation and D3D11: Windows only.</summary>
+    private const string WindowsOnly = "recording is Windows-only (Media Foundation)";
     private const string SavedTo = "saved to ";
     private const string Made = "compare.mp4 made";
     private const string NotCompared = "no compare: ";
@@ -110,6 +113,13 @@ internal sealed class StreamRecorder : IStreamRecorder
 
     private void Start(RecordingSettings settings)
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            Refuse(WindowsOnly);
+
+            return;
+        }
+
         var stats = _connection.Stats;
 
         if (stats.Width == 0 || stats.Height == 0)

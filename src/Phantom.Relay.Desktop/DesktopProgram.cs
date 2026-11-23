@@ -279,6 +279,11 @@ public static class DesktopProgram
     /// <summary>Whether the user's Lossless Scaling was found through Steam, and where: LSFG and LS1 need it.</summary>
     private static string LosslessScalingLine()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return "LSFG, LS1, NVIDIA FRUC and recording are Windows-only; for frame generation here use lsfg-vk with F12 (new pictures only).";
+        }
+
         var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, Phantom.Relay.Lsfg.LosslessLocator.SteamLibraries());
 
         if (library is null)

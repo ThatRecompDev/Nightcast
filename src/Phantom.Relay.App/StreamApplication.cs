@@ -518,7 +518,7 @@ public sealed class StreamApplication : IApplication
         return item switch
         {
             MenuItem.Stats => LevelName(_statsLevel),
-            MenuItem.FrameGeneration => _generation.Describe(_stream.Stats.NewPicturesPerSecond),
+            MenuItem.FrameGeneration => GenerationValue(),
             MenuItem.Upscaler => _picture.Describe(Report().Upscale),
             MenuItem.PictureFit => FitName(_fit),
             MenuItem.RumbleStrength => string.Create(CultureInfo.InvariantCulture, $"{_rumble.Gain * Percent:0} %"),
@@ -527,6 +527,20 @@ public sealed class StreamApplication : IApplication
             MenuItem.Record => _recording ?? "off",
             _ => string.Empty,
         };
+    }
+
+    /// <summary>
+    /// The frame generation chosen, where it can run: it runs on the decoder's GPU picture path, which only Windows'
+    /// decoder has, so elsewhere the row says so rather than offer what never starts.
+    /// </summary>
+    private string GenerationValue()
+    {
+        if (_stream.GpuPictures is null)
+        {
+            return "not here (Windows only; F12 for lsfg-vk)";
+        }
+
+        return _generation.Describe(_stream.Stats.NewPicturesPerSecond);
     }
 
     private static string OnOff(bool on)
