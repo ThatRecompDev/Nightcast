@@ -35,6 +35,7 @@ using Phantom.Relay.Desktop.Windowing;
 using Phantom.Relay.Http.Bcl;
 using Phantom.Relay.Media.Linux;
 using Phantom.Relay.Media.Windows;
+using Phantom.Relay.Pads.Linux;
 using Phantom.Relay.Pads.Windows;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Profiles.Input;
@@ -351,8 +352,9 @@ public static class DesktopProgram
     }
 
     /// <summary>
-    /// The window on this thread until it closes: the stream drawn, the pads (Xbox pads through XInput, PlayStation pads
-    /// through HID, as one) and keyboard and mouse composed under the profile and sent the moment they change.
+    /// The window on this thread until it closes: the stream drawn, the pads (on Windows Xbox pads through XInput and
+    /// PlayStation pads through HID, as one; on Linux every pad through evdev) and keyboard and mouse composed under the
+    /// profile and sent the moment they change.
     /// </summary>
     private static void RunWindow(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, bool fullscreen, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
     {
@@ -363,7 +365,27 @@ public static class DesktopProgram
             return;
         }
 
+        if (OperatingSystem.IsLinux())
+        {
+            RunWindowWithLinuxPads(connection, recorder, profile, pump, clock, log);
+
+            return;
+        }
+
         Run(connection, recorder, profile, new NoGamepads(), new NoSystemFonts(), new WindowedOnly(), pump, clock, log);
+    }
+
+    /// <summary>
+    /// Linux's pads through evdev (on SteamOS Steam Input's virtual pad), leaving alone the pads Steam lists as its
+    /// own; the window as it opens (gamescope shows it fullscreen in Gaming Mode).
+    /// </summary>
+    [SupportedOSPlatform("linux")]
+    private static void RunWindowWithLinuxPads(StreamConnection connection, IStreamRecorder recorder, StreamProfile profile, LogPump pump, TimeProvider clock, ILogger<StreamApplication> log)
+    {
+        using var pads = new EvdevPads(Environment.GetEnvironmentVariable(EvdevPads.IgnoreVariable));
+        pads.Start();
+        Run(connection, recorder, profile, pads, new NoSystemFonts(), new WindowedOnly(), pump, clock, log);
+        pads.Stop();
     }
 
     /// <summary>Windows' pads and fonts, and its borderless fullscreen, started in it when <paramref name="fullscreen"/>.</summary>

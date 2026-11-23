@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Pads on Linux (SteamOS: Steam Input's virtual pad; any pad the kernel reads as a gamepad) through evdev, for
+       the engine's gamepad ports. Game-agnostic: a candidate for the engine's Platform.Desktop, beside XInputGamepads. -->
+  <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Phantom.Engine.Core" />
+    <PackageReference Include="Phantom.Engine.Hosting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Phantom.Relay.Pads.Linux.Tests" />
+  </ItemGroup>
+
+</Project>

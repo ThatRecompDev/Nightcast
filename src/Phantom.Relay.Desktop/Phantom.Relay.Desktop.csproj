@@ -23,6 +23,7 @@
     <ProjectReference Include="../Phantom.Relay.Media.Linux/Phantom.Relay.Media.Linux.csproj" />
     <ProjectReference Include="../Phantom.Relay.Media.Windows/Phantom.Relay.Media.Windows.csproj" />
     <ProjectReference Include="../Phantom.Relay.Nvidia/Phantom.Relay.Nvidia.csproj" />
+    <ProjectReference Include="../Phantom.Relay.Pads.Linux/Phantom.Relay.Pads.Linux.csproj" />
     <ProjectReference Include="../Phantom.Relay.Pads.Windows/Phantom.Relay.Pads.Windows.csproj" />
     <ProjectReference Include="../Phantom.Relay.Profiles/Phantom.Relay.Profiles.csproj" />
     <ProjectReference Include="../Phantom.Relay.Stream/Phantom.Relay.Stream.csproj" />
