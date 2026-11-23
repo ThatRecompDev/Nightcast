@@ -100,7 +100,7 @@ public sealed class StatsOverlay
     {
         _canvas = new CanvasRenderer(_device, Vertices, new NativeBlockAllocator());
         _canvas.Initialize();
-        _font = ReadFont(out string face);
+        _font = OverlayFont.Read(_fonts, Faces, out string face);
 
         if (_font is null)
         {
@@ -173,34 +173,6 @@ public sealed class StatsOverlay
         _device.DestroyRetired();
     }
 
-    /// <summary>The first face the system gives a file for that reads as a TrueType font; null when none does.</summary>
-    private TrueTypeFont? ReadFont(out string face)
-    {
-        foreach (var name in Faces)
-        {
-            var file = _fonts.Find(name, false, false);
-
-            if (file is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                face = file.Face;
-
-                return TrueTypeFont.Read(file.Data);
-            }
-            catch (InvalidDataException)
-            {
-                // A collection or a file the reader does not take: the next face.
-            }
-        }
-
-        face = string.Empty;
-
-        return null;
-    }
 
     /// <summary>The glyph set at <paramref name="em"/>, its texture registered; the one before it released.</summary>
     private void Build(float em)
@@ -233,7 +205,8 @@ public sealed class StatsOverlay
         _firstBaseline = _panelMin + new Vector2(padding, padding + set.Ascent);
     }
 
-    private static string PrintableAscii()
+    /// <summary>Printable ASCII and the recorder's marks: the characters every glyph set of the window's text holds.</summary>
+    internal static string PrintableAscii()
     {
         var characters = new char[LastPrintable - FirstPrintable + 1];
 

@@ -6,28 +6,50 @@ using Phantom.Relay.Xbox.Session;
 namespace Phantom.Relay.Stream.Setup;
 
 /// <summary>
-/// Sign-in and the console choice on a text console, until the app has its own screens. Sign-in is by code: a short
-/// code is shown, the player enters it at the page shown (microsoft.com/link) on any phone or computer, and the setup
-/// waits; the head may open the page and copy the code for the player (<c>onCode</c>). A kept sign-in the service no
-/// longer accepts starts a new one. The consoles are listed and one is picked by number (the only one without asking).
-/// It never writes a token.
+/// Sign-in and the console choice as lines of text, on a text console or on the window's setup screen. Sign-in is by
+/// code: a short code is shown, the player enters it at the page shown (microsoft.com/link) on any phone or computer,
+/// and the setup waits; the head may open the page and copy the code for the player (<c>onCode</c>). A kept sign-in the
+/// service no longer accepts starts a new one. The consoles are listed and one is picked (<see cref="IConsoleChoice"/>;
+/// the only one without asking). It never writes a token.
 /// </summary>
-public sealed class TextSetup
+public sealed class TextSetup : ISetupFlow
 {
     private readonly IXboxAuthService _auth;
     private readonly IXHomeSessionService _sessions;
-    private readonly TextReader _input;
+    private readonly IConsoleChoice _choice;
     private readonly TextWriter _output;
     private readonly Action<DeviceSignIn>? _onCode;
 
     /// <summary><paramref name="onCode"/> sees each new sign-in code as it is shown (to open the page, copy the code); null for none.</summary>
-    public TextSetup(IXboxAuthService auth, IXHomeSessionService sessions, TextReader input, TextWriter output, Action<DeviceSignIn>? onCode)
+    public TextSetup(IXboxAuthService auth, IXHomeSessionService sessions, IConsoleChoice choice, TextWriter output, Action<DeviceSignIn>? onCode)
     {
         _auth = auth;
         _sessions = sessions;
-        _input = input;
+        _choice = choice;
         _output = output;
         _onCode = onCode;
+    }
+
+    public async Task<XboxConsole?> RunAsync(CancellationToken cancellation)
+    {
+        try
+        {
+            await SignInAsync(cancellation);
+
+            return await ChooseConsoleAsync(cancellation);
+        }
+        catch (XboxAuthException error)
+        {
+            _output.WriteLine($"Sign-in refused: {error.Message}");
+
+            return null;
+        }
+        catch (XHomeSessionException error)
+        {
+            _output.WriteLine($"Streaming service refused: {error.Message}");
+
+            return null;
+        }
     }
 
     /// <summary>Signs in with the kept account, or by code when none is kept or the kept one expired.</summary>
@@ -93,16 +115,15 @@ public sealed class TextSetup
             return consoles[0];
         }
 
-        _output.Write("Console number > ");
-        string? choice = await _input.ReadLineAsync(cancellation);
+        int? chosen = await _choice.ChooseAsync(consoles, cancellation);
 
-        if (!int.TryParse(choice, out int number) || number < 1 || number > consoles.Count)
+        if (chosen is null || chosen < 0 || chosen >= consoles.Count)
         {
             _output.WriteLine("No such console.");
 
             return null;
         }
 
-        return consoles[number - 1];
+        return consoles[chosen.Value];
     }
 }

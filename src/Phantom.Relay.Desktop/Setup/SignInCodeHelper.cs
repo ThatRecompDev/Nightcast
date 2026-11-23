@@ -6,15 +6,15 @@ using Phantom.Relay.Xbox.Auth;
 namespace Phantom.Relay.Desktop.Setup;
 
 /// <summary>
-/// Helps the sign-in by code on this machine: the code goes on the clipboard and the page opens in the default browser,
-/// so the player only pastes it. Either may fail (no browser, no clipboard); the code stays on the console either way,
-/// for a phone.
+/// Helps the sign-in by code on this machine: the code goes on the clipboard (Windows) and the page opens in the default
+/// browser, so the player only pastes it. Either may fail (no browser, no clipboard); the code stays on the screen either
+/// way, for a phone. Under gamescope (SteamOS's Gaming Mode) the page is not opened: a browser would cover the window.
 /// </summary>
 public static class SignInCodeHelper
 {
     private const string ClipboardTool = "clip.exe";
 
-    public static void Help(DeviceSignIn signIn, TextWriter output)
+    public static void Help(DeviceSignIn signIn, TextWriter output, bool openPage)
     {
         ArgumentNullException.ThrowIfNull(signIn);
         ArgumentNullException.ThrowIfNull(output);
@@ -24,7 +24,10 @@ public static class SignInCodeHelper
             output.WriteLine("The code is on the clipboard; the page opens in your browser.");
         }
 
-        TryOpen(signIn.Page);
+        if (openPage)
+        {
+            TryOpen(signIn.Page);
+        }
     }
 
     private static bool TryCopy(string code)

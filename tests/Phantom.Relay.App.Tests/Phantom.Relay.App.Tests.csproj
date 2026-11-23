@@ -27,4 +27,10 @@
     <Compile Include="../Phantom.Relay.Lsfg.Tests/Live/PngFile.cs" Link="Pictures/PngFile.cs" />
   </ItemGroup>
 
+  <!-- The probe's fake account and service, so the setup on screen runs the same sign-in and console choice. -->
+  <ItemGroup>
+    <Compile Include="../Phantom.Relay.Tools.Probe.Tests/Fakes/FakeAuth.cs" Link="Setup/FakeAuth.cs" />
+    <Compile Include="../Phantom.Relay.Tools.Probe.Tests/Fakes/FakeSessions.cs" Link="Setup/FakeSessions.cs" />
+  </ItemGroup>
+
 </Project>
