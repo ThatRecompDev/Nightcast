@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using System.Globalization;
 using System.Numerics;
 using Microsoft.Extensions.Logging;
 using Phantom.Engine.Core;
@@ -51,6 +52,7 @@ namespace Phantom.Relay.App;
 public sealed class StreamApplication : IApplication
 {
     private const byte FirstPad = 0;
+    private const float Percent = 100f;
 
     private static readonly Vector4 Black = new(0f, 0f, 0f, 1f);
 
@@ -439,6 +441,9 @@ public sealed class StreamApplication : IApplication
             case MenuItem.PictureFit:
                 ToggleFit();
                 break;
+            case MenuItem.RumbleStrength:
+                _rumble.NextGain();
+                break;
             case MenuItem.Fullscreen:
                 ToggleFullscreen();
                 break;
@@ -475,6 +480,7 @@ public sealed class StreamApplication : IApplication
             MenuItem.FrameGeneration => _generation.Describe(_stream.Stats.NewPicturesPerSecond),
             MenuItem.Upscaler => _picture.Describe(Report().Upscale),
             MenuItem.PictureFit => FitName(_fit),
+            MenuItem.RumbleStrength => string.Create(CultureInfo.InvariantCulture, $"{_rumble.Gain * Percent:0} %"),
             MenuItem.Fullscreen => OnOff(_mode.Fullscreen),
             MenuItem.Record => _recording ?? "off",
             _ => string.Empty,

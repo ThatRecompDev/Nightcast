@@ -22,7 +22,8 @@ public sealed class RumblePlayerTests
         player.Play(Report(0, 0.5f, 0.25f, 200), DualSenseSlot, Start);
         player.Tick(DualSenseSlot, Start + TimeSpan.FromMilliseconds(199));
 
-        Assert.Equal((DualSenseSlot, 0.5f, 0.25f), _motors.Last);
+        // At the starting gain of 200 %.
+        Assert.Equal((DualSenseSlot, 1f, 0.5f), _motors.Last);
         Assert.True(player.Running);
 
         player.Tick(DualSenseSlot, Start + TimeSpan.FromMilliseconds(200));
@@ -69,6 +70,35 @@ public sealed class RumblePlayerTests
         withMotors.Play(Report(0, 1f, 1f, 100), -1, Start);
         Assert.False(withMotors.Running);
         Assert.Equal(0, _motors.Calls);
+    }
+
+    [Fact]
+    public void Trigger_rumble_is_felt_on_the_main_motors_instead_of_stopping_them()
+    {
+        var player = new RumblePlayer(_motors);
+        player.NextGain();
+        player.NextGain();
+
+        Assert.Equal(1f, player.Gain);
+
+        player.Play(new RumbleReport(0, 0f, 0.1f, 0.3f, 0.2f, TimeSpan.FromMilliseconds(100)), DualSenseSlot, Start);
+
+        Assert.Equal((DualSenseSlot, 0.3f, 0.2f), _motors.Last);
+        Assert.True(player.Running);
+    }
+
+    [Fact]
+    public void The_gain_steps_through_its_strengths_and_caps_at_full_speed()
+    {
+        var player = new RumblePlayer(_motors);
+
+        Assert.Equal(2f, player.Gain);
+        Assert.Equal(3f, player.NextGain());
+
+        player.Play(Report(0, 0.5f, 0.1f, 100), DualSenseSlot, Start);
+
+        Assert.Equal(1f, _motors.Last.Low);
+        Assert.Equal(0.3f, _motors.Last.High, 0.0001f);
     }
 
     private static RumbleReport Report(byte pad, float low, float high, int milliseconds)

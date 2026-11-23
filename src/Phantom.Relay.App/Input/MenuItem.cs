@@ -26,6 +26,9 @@ public enum MenuItem
     /// <summary>Bars or stretched on a screen of another shape (F2).</summary>
     PictureFit,
 
+    /// <summary>How strongly the pad rumbles: 200 %, 300 %, 100 %, 150 %.</summary>
+    RumbleStrength,
+
     /// <summary>Fullscreen or a window (F11).</summary>
     Fullscreen,
 
