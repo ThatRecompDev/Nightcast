@@ -1,5 +1,6 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
+using Phantom.Relay.App.Pictures;
 using Phantom.Relay.App.Setup;
 using Phantom.Relay.Profiles;
 using Phantom.Relay.Stream.Feedback;
@@ -10,7 +11,8 @@ namespace Phantom.Relay.Desktop;
 
 /// <summary>
 /// One run of the desktop as its switches and the user's store set it up: the service, the profiles and the stream's
-/// settings, the setup and where its lines show (the window's screen and the text console), the window's start, and whether it presents only new pictures.
+/// settings, the setup and where its lines show (the window's screen and the text console), the window's start, whether
+/// it presents only new pictures, and the external frame generator where Nightcast's own cannot run (lsfg-vk on Linux).
 /// </summary>
 internal sealed record StreamRun(
     IXHomeSessionService Sessions,
@@ -22,4 +24,5 @@ internal sealed record StreamRun(
     ISetupFlow Setup,
     ScreenWriter Screen,
     ScreenConsoleChoice Choice,
-    TimeProvider Clock);
+    TimeProvider Clock,
+    IExternalFrameGeneration? External);

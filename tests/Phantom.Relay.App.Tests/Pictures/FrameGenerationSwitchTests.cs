@@ -110,6 +110,31 @@ public sealed class FrameGenerationSwitchTests
         Assert.False(choice.Changed);
     }
 
+    [Fact]
+    public void An_external_generators_kept_choice_resumes_with_its_setting_and_multiplier()
+    {
+        var choice = new FrameGenerationSwitch();
+        var kept = FrameGeneration.QualityDoubled with { Mode = FrameGenerationMode.Performance, Multiplier = 3, FlowScale = FrameGenerationSwitch.HalfFlow };
+
+        Assert.Equal(kept, choice.Resume(kept));
+        Assert.False(choice.Changed);
+        Assert.Equal("LSFG x3 → 90 fps (performance, flow 0.50)", choice.Describe(ThirtyFps));
+        Assert.Equal(3, choice.Follow(FrameGeneration.QualityDoubled).Multiplier);
+        Assert.Same(FrameGeneration.Off, choice.Resume(FrameGeneration.Off));
+    }
+
+    [Fact]
+    public void F4_for_an_external_generator_turns_it_off_and_on_with_the_setting_chosen_last_never_FRUC()
+    {
+        var choice = new FrameGenerationSwitch();
+        choice.Resume(FrameGeneration.QualityDoubled with { Generator = FrameGenerator.NvidiaFruc, Multiplier = 4 });
+
+        Assert.Equal(FrameGenerator.Lsfg, choice.Current.Generator);
+        Assert.Same(FrameGeneration.Off, choice.Toggle());
+        Assert.Equal(FrameGeneration.QualityDoubled with { Multiplier = 4 }, choice.Toggle());
+        Assert.True(choice.Changed);
+    }
+
     private static string Describe(FrameGeneration settings, FrameGenerationSwitch choice)
     {
         Assert.True(settings.IsOn);

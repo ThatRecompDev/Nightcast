@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Phantom.Relay. All rights reserved.
 
 using System.Collections.Immutable;
+using System.Runtime.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Phantom.Engine.Audio.Codecs.Opus;
@@ -16,10 +17,12 @@ using Phantom.Engine.Net.Transport.Udp;
 using Phantom.Engine.Platform.Desktop.Storage;
 using Phantom.Relay.App;
 using Phantom.Relay.App.Input;
+using Phantom.Relay.App.Pictures;
 using Phantom.Relay.App.Setup;
 using Phantom.Relay.App.Sound;
 using Phantom.Relay.Audio;
 using Phantom.Relay.Desktop.Logging;
+using Phantom.Relay.Desktop.LsfgVk;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Recording;
 using Phantom.Relay.Desktop.Setup;
@@ -54,9 +57,11 @@ namespace Phantom.Relay.Desktop;
 /// <c>--no-feedback</c> turns it off. On Windows the stream starts fullscreen (borderless,
 /// <see cref="BorderlessFullscreen"/>); <c>--windowed</c> starts it as a window. A published build updates itself from
 /// Nightcast's public releases at start, before the window (<see cref="SelfUpdater"/>); <c>--no-update</c> skips it.
-/// <c>--external-frame-generation</c> presents only the game's new pictures from the start, for lsfg-vk (F12 or the
-/// menu switch it live; <see cref="StreamApplication.PresentNewPicturesOnly"/>).
-/// Tokens stay in the user's own store, never in the output.
+/// <c>--external-frame-generation</c> presents only the game's new pictures from the start, for another external frame
+/// generator (F12 or the menu switch it live; <see cref="StreamApplication.PresentNewPicturesOnly"/>). On Linux frame
+/// generation is lsfg-vk, run inside Nightcast's own process (<see cref="LsfgVkFrameGeneration"/>): loaded before the
+/// window when the player's kept choice is on; turned on the first time, Nightcast starts itself again once the window
+/// closed (<see cref="ProcessRestart"/>). Tokens stay in the user's own store, never in the output.
 /// </summary>
 public static class DesktopProgram
 {
@@ -70,9 +75,10 @@ public static class DesktopProgram
     private const string WindowedArgument = "--windowed";
     private const string NoUpdateArgument = "--no-update";
     private const string HomeVariable = "HOME";
+    private const string DataHomeVariable = "XDG_DATA_HOME";
 
-    /// <summary>Where Steam keeps itself on Linux, below the home folder (SteamOS: the first; older installs: the second).</summary>
-    private static readonly string[] LinuxSteamFolders = [Path.Combine(".local", "share", "Steam"), Path.Combine(".steam", "steam")];
+    /// <summary>What the console's start line calls a choice that is on, in lsfg-vk's state ("lsfg-vk: on").</summary>
+    private const string LsfgVkStartWord = "on";
 
     /// <summary>Present only the game's new pictures from the start, for lsfg-vk or another external frame generator.</summary>
     private const string ExternalFrameGenerationArgument = "--external-frame-generation";
@@ -97,6 +103,13 @@ public static class DesktopProgram
         }
 
         var outcome = await RunAsync(args);
+
+        // lsfg-vk was made ready during the run: Nightcast starts again in this process, and loads it before its window.
+        if (outcome.Restart && OperatingSystem.IsLinux() && Environment.ProcessPath is not null)
+        {
+            Console.WriteLine("Starting again to load lsfg-vk...");
+            Console.WriteLine(ProcessRestart.Exec(Environment.ProcessPath, args));
+        }
 
         if (outcome.Code != Succeeded && !outcome.ShownInWindow && !Console.IsInputRedirected)
         {
@@ -145,15 +158,48 @@ public static class DesktopProgram
         var sessions = new XHomeSessionService(http, auth, clock, NullLogger<XHomeSessionService>.Instance);
         var profiles = BuiltInProfiles.With(new ProfileStore(store).LoadAll());
         var settings = SessionSettings.For(ProfileChoice.For(profiles, null).Stream.Resolution, clock);
+        IExternalFrameGeneration? external = null;
+
+        // On Linux lsfg-vk, before the window: its layer must be there when the window's Vulkan instance is made.
+        if (OperatingSystem.IsLinux())
+        {
+            external = await StartLsfgVkAsync(store, cancellation.Token);
+        }
 
         // The setup's lines go to the window's screen and the text console; the console is picked on the screen.
         var screen = new ScreenWriter(Console.Out);
         var choice = new ScreenConsoleChoice();
         var openPage = Environment.GetEnvironmentVariable(GamescopeVariable) is null;
         var setup = new TextSetup(auth, sessions, choice, screen, signIn => SignInCodeHelper.Help(signIn, screen, openPage));
-        var run = new StreamRun(sessions, profiles, settings, feedback, !args.Contains(WindowedArgument), args.Contains(ExternalFrameGenerationArgument), setup, screen, choice, clock);
+        var run = new StreamRun(sessions, profiles, settings, feedback, !args.Contains(WindowedArgument), args.Contains(ExternalFrameGenerationArgument), setup, screen, choice, clock, external);
+        var outcome = StreamConsole(run);
 
-        return StreamConsole(run);
+        return outcome with { Restart = external is not null && external.RestartRequested };
+    }
+
+    /// <summary>
+    /// lsfg-vk in Nightcast's own folder, with the player's Lossless Scaling found in Steam's libraries and the choice
+    /// kept in the user's store: loaded now when that choice is on. Null without a home folder to keep it in.
+    /// </summary>
+    [SupportedOSPlatform("linux")]
+    private static async Task<LsfgVkFrameGeneration?> StartLsfgVkAsync(IPersistentStore store, CancellationToken cancellation)
+    {
+        string? home = Environment.GetEnvironmentVariable(HomeVariable);
+        var folders = LsfgVkFolders.For(Environment.GetEnvironmentVariable(DataHomeVariable), home);
+
+        if (folders is null)
+        {
+            return null;
+        }
+
+        var installer = new LsfgVkInstaller(folders, new HttpArchiveSource(), new XzDecompressor(), LsfgVkRelease.Sha256);
+        var lossless = LsfgVkLossless.Find(LinuxSteamLibraries.Below(home));
+        var lsfgVk = new LsfgVkFrameGeneration(folders, lossless, installer, new LibcEnvironment(), new VulkanLayerProbe(), new LsfgVkChoiceStore(store));
+        await lsfgVk.StartAsync(cancellation);
+
+        Console.WriteLine($"Frame generation: {lsfgVk.Describe(LsfgVkStartWord)}. {LsfgVkRelease.Notice}");
+
+        return lsfgVk;
     }
 
     /// <summary>
@@ -273,7 +319,12 @@ public static class DesktopProgram
         var application = new StreamApplication(parts.Device, parts.Window, connection, new ProfilePadComposer(profile), reports, parts.Fonts, parts.Motors, recorder, parts.Mode, run.Clock, log);
 
         application.PresentNewPicturesOnly(run.NewPicturesOnly);
-        application.DescribeExternalGeneration(ExternalGeneration());
+
+        if (run.External is not null)
+        {
+            application.UseExternalGeneration(run.External);
+        }
+
         Console.WriteLine(LosslessScalingLine());
         Console.WriteLine($"Streaming {console.Name}, asking for {run.Settings.Resolution}, bitrate feedback {run.Feedback.Describe()}. View+Menu opens the menu; Escape (or View+Menu held) ends.");
         connection.Start(console.ServerId, run.Settings, run.Feedback);
@@ -286,7 +337,7 @@ public static class DesktopProgram
     {
         if (!OperatingSystem.IsWindows())
         {
-            return $"Lossless Scaling: {ExternalGeneration()}. LS1, NVIDIA FRUC and recording are Windows-only.";
+            return "Frame generation is lsfg-vk's (the menu's Frame generation row); LS1, NVIDIA FRUC and recording are Windows-only.";
         }
 
         var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, Phantom.Relay.Lsfg.LosslessLocator.SteamLibraries());
@@ -297,48 +348,6 @@ public static class DesktopProgram
         }
 
         return $"Lossless Scaling: found ({Path.GetDirectoryName(library)}); LSFG and LS1 are in the menu (View+Menu).";
-    }
-
-    /// <summary>
-    /// Off Windows, frame generation is lsfg-vk's (a Vulkan layer that reads the user's Lossless.dll): whether Steam's
-    /// libraries hold Lossless Scaling, for the menu's frame-generation row and the console.
-    /// </summary>
-    private static string ExternalGeneration()
-    {
-        var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, LinuxSteamLibraries());
-
-        if (library is null)
-        {
-            return "not found in Steam (lsfg-vk needs Lossless Scaling installed through Steam)";
-        }
-
-        return "found; turn on lsfg-vk (Decky) and New pictures only";
-    }
-
-    /// <summary>The Steam libraries of a Linux Steam (SteamOS's): its own folder and the ones its libraryfolders.vdf lists.</summary>
-    private static List<string> LinuxSteamLibraries()
-    {
-        var libraries = new List<string>();
-        string? home = Environment.GetEnvironmentVariable(HomeVariable);
-
-        if (string.IsNullOrEmpty(home))
-        {
-            return libraries;
-        }
-
-        foreach (var steam in LinuxSteamFolders)
-        {
-            var root = Path.Combine(home, steam);
-            var folders = Path.Combine(root, "steamapps", "libraryfolders.vdf");
-            libraries.Add(root);
-
-            if (File.Exists(folders))
-            {
-                libraries.AddRange(Phantom.Relay.Lsfg.LosslessLocator.ParseLibraryFolders(File.ReadAllText(folders)));
-            }
-        }
-
-        return libraries;
     }
 
     /// <summary>A recording stopped as the window closed is finished (and compared) before the decoder goes.</summary>

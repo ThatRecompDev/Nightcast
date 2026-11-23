@@ -81,6 +81,35 @@ public sealed class FrameGenerationSwitch
         return Current;
     }
 
+    /// <summary>
+    /// The player's own last choice resumes (an external generator's, kept between runs): on or off as it was, with
+    /// its setting, and its multiplier held for the session as F8's is.
+    /// </summary>
+    public FrameGeneration Resume(FrameGeneration remembered)
+    {
+        ArgumentNullException.ThrowIfNull(remembered);
+        _on = remembered.IsOn;
+        Changed = false;
+
+        if (remembered.IsOn)
+        {
+            _chosen = remembered with { Generator = FrameGenerator.Lsfg };
+            _multiplier = remembered.ClampedMultiplier;
+        }
+
+        return Current;
+    }
+
+    /// <summary>F4 for an external generator, which is LSFG alone (lsfg-vk): off → on → off, with the setting chosen last.</summary>
+    public FrameGeneration Toggle()
+    {
+        Changed = true;
+        _on = !_on;
+        _chosen = _chosen with { Generator = FrameGenerator.Lsfg };
+
+        return Current;
+    }
+
     /// <summary>F4: off → LSFG → NVIDIA FRUC → off, with the setting chosen last.</summary>
     public FrameGeneration Cycle()
     {

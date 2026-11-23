@@ -62,6 +62,12 @@ public sealed class StreamApplication : IApplication
     /// </summary>
     private static readonly TimeSpan NewPictureWait = TimeSpan.FromMilliseconds(100);
 
+    /// <summary>NOT DATA: how long the restart an external frame generator asked for is shown before the window closes.</summary>
+    private static readonly TimeSpan RestartNotice = TimeSpan.FromSeconds(3);
+
+    private const string RestartLine = "Frame generation is ready: Nightcast restarts to load it, and the stream comes back by itself.";
+    private const string NotAvailable = "not available on this system";
+
     private static readonly Vector4 Black = new(0f, 0f, 0f, 1f);
 
     private readonly IGraphicsDevice _device;
@@ -84,7 +90,8 @@ public sealed class StreamApplication : IApplication
     private readonly StatsOverlay _menuOverlay;
     private PictureFit _fit = PictureFit.Bars;
     private XboxPadState _sent;
-    private string _externalGeneration = "lsfg-vk (Decky) with New pictures only";
+    private IExternalFrameGeneration? _external;
+    private TimeSpan? _restartAt;
 
     private TimeSpan _now;
     private string? _recording;
@@ -126,17 +133,9 @@ public sealed class StreamApplication : IApplication
     /// between the presents it sees: each frame then waits for the next new picture (<see cref="NewPictureSignal"/>,
     /// at most <see cref="NewPictureWait"/>) before it draws, so the window presents at the game's own rate (30 a
     /// second for a 30 fps game) and never a repeat. The engine presents every frame it runs, so this paces the frames
-    /// rather than skipping presents: the pads are then read once a picture rather than once a refresh.
+    /// rather than skipping presents: the pads are then read once a picture rather than once a refresh. While an
+    /// external frame generator runs (<see cref="UseExternalGeneration"/>) this is on whatever the player set.
     /// </summary>
-    /// <summary>
-    /// What the frame-generation row says where Nightcast's own frame generation cannot run (off Windows): the head's
-    /// word on the external one, e.g. whether Lossless Scaling, which lsfg-vk uses, was found.
-    /// </summary>
-    public void DescribeExternalGeneration(string description)
-    {
-        _externalGeneration = description;
-    }
-
     public void PresentNewPicturesOnly(bool on)
     {
         _newPicturesOnly = on;
@@ -146,6 +145,18 @@ public sealed class StreamApplication : IApplication
         {
             _log.NewPicturesOnly(on);
         }
+    }
+
+    /// <summary>
+    /// Where Nightcast's own frame generation cannot run (off Windows), the head's external one (lsfg-vk on Linux):
+    /// the frame-generation rows and F4, F5 and F8 drive it, the player's last choice resumes, and the window presents
+    /// only new pictures while it runs.
+    /// </summary>
+    public void UseExternalGeneration(IExternalFrameGeneration external)
+    {
+        ArgumentNullException.ThrowIfNull(external);
+        _external = external;
+        _generation.Resume(external.Remembered);
     }
 
     public void Initialize()
@@ -184,6 +195,37 @@ public sealed class StreamApplication : IApplication
         Present();
         ShowTitle();
         QuitWhenEnded();
+        RestartForExternal();
+    }
+
+    /// <summary>
+    /// An external frame generator that needs the process started again (lsfg-vk loaded the first time): the reason
+    /// shows over the picture for <see cref="RestartNotice"/>, then the window closes and the head starts Nightcast
+    /// again, which takes the stream up again by itself.
+    /// </summary>
+    private void RestartForExternal()
+    {
+        if (_external is null || !_external.RestartRequested)
+        {
+            return;
+        }
+
+        if (_restartAt is null)
+        {
+            _restartAt = _now + RestartNotice;
+            _menu.Close();
+            _menuOverlay.Show([RestartLine, _external.Notice]);
+        }
+        else if (_now >= _restartAt)
+        {
+            _window.Quit();
+        }
+    }
+
+    /// <summary>Whether frames are presented only for new pictures: the player's switch, or an external generator running.</summary>
+    private bool NewPicturesOnlyNow()
+    {
+        return _newPicturesOnly || (_external is not null && _external.Running);
     }
 
     /// <summary>
@@ -242,7 +284,7 @@ public sealed class StreamApplication : IApplication
     /// </summary>
     private void Present()
     {
-        if (_newPicturesOnly)
+        if (NewPicturesOnlyNow())
         {
             _stream.NewPictures.Wait(NewPictureWait);
         }
@@ -275,7 +317,7 @@ public sealed class StreamApplication : IApplication
     [HotPath]
     private void DrawStats()
     {
-        if (_menu.IsOpen)
+        if (_menu.IsOpen || _restartAt is not null)
         {
             _menuOverlay.Draw();
         }
@@ -374,18 +416,44 @@ public sealed class StreamApplication : IApplication
 
         _profile = profile;
         _pads.Use(profile);
-        _stream.GpuPictures?.Use(_generation.Follow(profile.FrameGeneration));
+        _stream.GpuPictures?.Use(FollowGeneration(profile.FrameGeneration));
         _picture.Use(profile.Upscaling.Method);
         _reports.Reset();
         _captureMouse = KeyboardMousePlays();
     }
 
-    /// <summary>F4 cycles frame generation (off, LSFG, NVIDIA FRUC), F5 picks LSFG's next setting, F8 the next multiplier; the title shows the choice at once.</summary>
+    /// <summary>
+    /// A new title's frame generation: its profile's. With an external generator a profile without one keeps the
+    /// player's own choice (which persists between runs), and one with it is passed on.
+    /// </summary>
+    private FrameGeneration FollowGeneration(FrameGeneration profile)
+    {
+        if (_external is null)
+        {
+            return _generation.Follow(profile);
+        }
+
+        if (profile.IsOn)
+        {
+            _external.Use(_generation.Follow(profile));
+        }
+
+        return _generation.Current;
+    }
+
+    /// <summary>
+    /// F4 cycles frame generation (off, LSFG, NVIDIA FRUC; off and on for an external generator), F5 picks LSFG's next
+    /// setting, F8 the next multiplier; the title shows the choice at once.
+    /// </summary>
     private void SwitchGeneration(Key key)
     {
         FrameGeneration settings;
 
-        if (key == Key.F4)
+        if (key == Key.F4 && _external is not null)
+        {
+            settings = _generation.Toggle();
+        }
+        else if (key == Key.F4)
         {
             settings = _generation.Cycle();
         }
@@ -399,6 +467,7 @@ public sealed class StreamApplication : IApplication
         }
 
         _stream.GpuPictures?.Use(settings);
+        _external?.Use(settings);
         _shownStats = null;
 
         if (_log.IsEnabled(LogLevel.Information))
@@ -519,7 +588,14 @@ public sealed class StreamApplication : IApplication
             return;
         }
 
-        _menuOverlay.Show(_menu.Lines(MenuValue));
+        if (_external is null)
+        {
+            _menuOverlay.Show(_menu.Lines(MenuValue));
+
+            return;
+        }
+
+        _menuOverlay.Show([.. _menu.Lines(MenuValue), string.Empty, _external.Notice]);
     }
 
     /// <summary>What a row shows beside its label: the setting as it is now.</summary>
@@ -533,24 +609,42 @@ public sealed class StreamApplication : IApplication
             MenuItem.PictureFit => FitName(_fit),
             MenuItem.RumbleStrength => string.Create(CultureInfo.InvariantCulture, $"{_rumble.Gain * Percent:0} %"),
             MenuItem.Fullscreen => OnOff(_mode.Fullscreen),
-            MenuItem.NewPicturesOnly => OnOff(_newPicturesOnly),
+            MenuItem.NewPicturesOnly => NewPicturesValue(),
             MenuItem.Record => _recording ?? "off",
             _ => string.Empty,
         };
     }
 
     /// <summary>
-    /// The frame generation chosen, where it can run: it runs on the decoder's GPU picture path, which only Windows'
-    /// decoder has, so elsewhere the row says so rather than offer what never starts.
+    /// The frame generation chosen, where it can run: Nightcast's own runs on the decoder's GPU picture path, which
+    /// only Windows' decoder has; elsewhere the external generator's word (what runs, or why not), else that there is none.
     /// </summary>
     private string GenerationValue()
     {
-        if (_stream.GpuPictures is null)
+        var chosen = _generation.Describe(_stream.Stats.NewPicturesPerSecond);
+
+        if (_stream.GpuPictures is not null)
         {
-            return _externalGeneration;
+            return chosen;
         }
 
-        return _generation.Describe(_stream.Stats.NewPicturesPerSecond);
+        if (_external is not null)
+        {
+            return _external.Describe(chosen);
+        }
+
+        return NotAvailable;
+    }
+
+    /// <summary>The row's value: on or off, and on because the external generator runs when that is why.</summary>
+    private string NewPicturesValue()
+    {
+        if (!_newPicturesOnly && NewPicturesOnlyNow())
+        {
+            return "on (frame generation runs)";
+        }
+
+        return OnOff(_newPicturesOnly);
     }
 
     private static string OnOff(bool on)
@@ -717,6 +811,11 @@ public sealed class StreamApplication : IApplication
             report = report with { Path = $"{GpuPictureReport.ReadBack}: {refusal}" };
         }
 
+        if (_stream.GpuPictures is null && _external is not null)
+        {
+            report = report with { FrameGeneration = GenerationValue() };
+        }
+
         return report;
     }
 
@@ -754,13 +853,7 @@ public sealed class StreamApplication : IApplication
     /// <summary>The overlay's lines at the chosen level.</summary>
     private string[] OverlayLines(StreamStats stats, PresentStats present, GpuPictureReport report, string upscale)
     {
-        var chosen = _generation.Current;
-        int multiplier = 1;
-
-        if (chosen.IsOn)
-        {
-            multiplier = chosen.ClampedMultiplier;
-        }
+        var multiplier = ShownMultiplier();
 
         return _statsLevel switch
         {
@@ -768,6 +861,24 @@ public sealed class StreamApplication : IApplication
             StatsLevel.Large => StatsText.Large(stats, present, report, multiplier, upscale),
             _ => [.. StatsText.Lines(stats, present, report, _pads.Source, upscale), SentLine()],
         };
+    }
+
+    /// <summary>The frames shown per new picture: the choice's multiplier while it generates, else 1.</summary>
+    private int ShownMultiplier()
+    {
+        var chosen = _generation.Current;
+
+        if (!chosen.IsOn)
+        {
+            return 1;
+        }
+
+        if (_stream.GpuPictures is null && _external is not null && !_external.Running)
+        {
+            return 1;
+        }
+
+        return chosen.ClampedMultiplier;
     }
 
     /// <summary>
@@ -798,7 +909,7 @@ public sealed class StreamApplication : IApplication
             title = $"{title} | {_picture.Describe(Report().Upscale)}";
         }
 
-        if (_newPicturesOnly)
+        if (NewPicturesOnlyNow())
         {
             title = $"{title} | new pictures only";
         }
