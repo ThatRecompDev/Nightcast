@@ -4,8 +4,8 @@ namespace Phantom.Relay.Desktop.Updates;
 
 /// <summary>
 /// Where Nightcast's public builds are (docs/how-we-work.md 1a): the latest release of a public GitHub repository that
-/// holds only a README and the releases, read anonymously through GitHub's REST API. A release carries the exe and a
-/// file with its SHA-256; nothing else is downloaded.
+/// holds only a README and the releases, read anonymously through GitHub's REST API. A release carries each system's
+/// build (the Windows exe, the Linux file) and a file with its SHA-256; a build downloads only its own system's.
 /// </summary>
 public static class UpdateSource
 {
@@ -16,6 +16,11 @@ public static class UpdateSource
 
     /// <summary>The release's checksum file: the exe's SHA-256 in hex first, as sha256sum writes it.</summary>
     public const string ChecksumName = "Nightcast.exe.sha256";
+
+    /// <summary>The Linux build's name in a release (64-bit x86, SteamOS), and its checksum file's.</summary>
+    public const string LinuxName = "Nightcast-linux-x64";
+
+    public const string LinuxChecksumName = "Nightcast-linux-x64.sha256";
 
     /// <summary>GitHub's API asks every client for a User-Agent; the app's name, nothing of the user's.</summary>
     public const string UserAgent = "Nightcast-Updater";

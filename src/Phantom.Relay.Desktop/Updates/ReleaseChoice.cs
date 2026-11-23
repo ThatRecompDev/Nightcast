@@ -38,14 +38,18 @@ public static class ReleaseChoice
         return running is not null && running > DevelopmentBuild;
     }
 
-    /// <summary>The exe's and the checksum's addresses when the release has both, from the release's own folder.</summary>
-    public static bool TryFiles(GitHubRelease release, out Uri exe, out Uri checksum)
+    /// <summary>
+    /// The addresses of <paramref name="assets"/>' build and checksum (the running system's) when the release has both,
+    /// from the release's own folder.
+    /// </summary>
+    public static bool TryFiles(GitHubRelease release, UpdateAssets assets, out Uri exe, out Uri checksum)
     {
         ArgumentNullException.ThrowIfNull(release);
+        ArgumentNullException.ThrowIfNull(assets);
         exe = checksum = null!;
 
-        var exeUrl = Find(release, UpdateSource.ExeName);
-        var checksumUrl = Find(release, UpdateSource.ChecksumName);
+        var exeUrl = Find(release, assets.Build);
+        var checksumUrl = Find(release, assets.Checksum);
 
         if (exeUrl is null || checksumUrl is null)
         {

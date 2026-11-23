@@ -7,8 +7,9 @@ namespace Phantom.Relay.Desktop.Updates;
 
 /// <summary>
 /// Keeps a published Nightcast up to date from its public releases (<see cref="UpdateSource"/>), at start, before
-/// anything else: GitHub's latest release is asked for anonymously; when it is newer than the running build its exe is
-/// downloaded beside the running one as <c>.new</c> and checked against the release's SHA-256, and the new exe is
+/// anything else: GitHub's latest release is asked for anonymously; when it is newer than the running build the running
+/// system's file (<see cref="UpdateAssets"/>: Nightcast.exe on Windows, Nightcast-linux-x64 on Linux) is downloaded
+/// beside the running one as <c>.new</c> (made executable on Linux) and checked against the release's SHA-256, and it is
 /// started to finish the update (<see cref="UpdateHandoff"/>) while this one ends. The running exe's file is never
 /// renamed or replaced while it runs: a single-file app loads parts of itself from its own file later, by path, and
 /// another file at that path breaks it. Offline, slow, or anything unexpected, and the app starts as it is: an update
@@ -21,7 +22,9 @@ public static class SelfUpdater
     {
         ArgumentNullException.ThrowIfNull(output);
 
-        if (exePath is null || !ReleaseChoice.Updates(running))
+        var assets = UpdateAssets.Running();
+
+        if (exePath is null || assets is null || !ReleaseChoice.Updates(running))
         {
             return false;
         }
@@ -30,7 +33,7 @@ public static class SelfUpdater
 
         try
         {
-            return await UpdateAsync(exePath, running!, args, output, cancellation);
+            return await UpdateAsync(exePath, assets, running!, args, output, cancellation);
         }
         catch (Exception problem) when (problem is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException or System.Text.Json.JsonException or System.ComponentModel.Win32Exception)
         {
@@ -40,7 +43,7 @@ public static class SelfUpdater
         }
     }
 
-    private static async Task<bool> UpdateAsync(string exePath, Version running, IReadOnlyList<string> args, TextWriter output, CancellationToken cancellation)
+    private static async Task<bool> UpdateAsync(string exePath, UpdateAssets assets, Version running, IReadOnlyList<string> args, TextWriter output, CancellationToken cancellation)
     {
         using var client = new HttpClient { Timeout = UpdateSource.CheckTimeout };
         client.DefaultRequestHeaders.UserAgent.ParseAdd(UpdateSource.UserAgent);
@@ -48,9 +51,9 @@ public static class SelfUpdater
         var release = await client.GetFromJsonAsync(UpdateSource.LatestRelease, UpdateJsonContext.Default.GitHubRelease, cancellation);
         var latest = release is null ? null : ReleaseChoice.VersionOf(release);
 
-        if (release is null || latest is null || latest <= running || !ReleaseChoice.TryFiles(release, out var exe, out var checksum))
+        if (release is null || latest is null || latest <= running || !ReleaseChoice.TryFiles(release, assets, out var exe, out var checksum))
         {
-            output.WriteLine($"{UpdateSource.ExeName} {running} is up to date.");
+            output.WriteLine($"{assets.Build} {running} is up to date.");
 
             return false;
         }
@@ -75,6 +78,7 @@ public static class SelfUpdater
             return false;
         }
 
+        UpdateHandoff.MakeExecutable(downloaded);
         UpdateHandoff.Start(downloaded, exePath, args);
         output.WriteLine($"Downloaded {latest}; it takes over now.");
 

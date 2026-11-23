@@ -9,7 +9,8 @@ namespace Phantom.Relay.Desktop.Updates;
 /// The second half of an update. The old build starts the downloaded <c>.new</c> exe with
 /// <see cref="FinishArgument"/>, the path to replace and its own process id, and ends; the new exe waits until the
 /// old one has ended, copies itself over the old file (retrying while the virus scanner still looks at it), starts the
-/// replaced file with the player's own arguments in the same console, and ends. The replaced build removes the
+/// replaced file with the player's own arguments in the same console, and ends; on Linux the replaced file is made
+/// executable first (<see cref="MakeExecutable"/>). The replaced build removes the
 /// <c>.new</c> leftover at its next start (<see cref="RemoveLeftover"/>). If the copy fails the old file stays as it
 /// was, so the app still starts.
 /// </summary>
@@ -75,6 +76,8 @@ public static class UpdateHandoff
             output.WriteLine("The update could not replace the app (the file is held); it starts as it was.");
         }
 
+        MakeExecutable(target);
+
         var start = new ProcessStartInfo(target) { UseShellExecute = false };
 
         foreach (var arg in args.Skip(FinishArguments))
@@ -85,6 +88,33 @@ public static class UpdateHandoff
         using var process = Process.Start(start);
 
         return true;
+    }
+
+    /// <summary>
+    /// Outside Windows, lets the file at <paramref name="path"/> run (its owner, group and others may execute it), as
+    /// a download or a copy of the build may not; nothing on Windows. A file that cannot be changed is left as it is.
+    /// </summary>
+    public static void MakeExecutable(string path)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(path, Executable(File.GetUnixFileMode(path)));
+        }
+        catch (Exception refused) when (refused is IOException or UnauthorizedAccessException)
+        {
+            // Not ours to change: the start that follows says so if it cannot run.
+        }
+    }
+
+    /// <summary><paramref name="mode"/> with the owner's read and everyone's execute added.</summary>
+    public static UnixFileMode Executable(UnixFileMode mode)
+    {
+        return mode | UnixFileMode.UserRead | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute;
     }
 
     /// <summary>The download an update left beside the exe, and an older build's leftover; gone once nothing runs them.</summary>
