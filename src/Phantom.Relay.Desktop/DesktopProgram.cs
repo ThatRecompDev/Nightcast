@@ -33,6 +33,7 @@ using Phantom.Relay.Desktop.Setup;
 using Phantom.Relay.Desktop.Updates;
 using Phantom.Relay.Desktop.Windowing;
 using Phantom.Relay.Http.Bcl;
+using Phantom.Relay.Media.Linux;
 using Phantom.Relay.Media.Windows;
 using Phantom.Relay.Pads.Windows;
 using Phantom.Relay.Profiles;
@@ -276,7 +277,8 @@ public static class DesktopProgram
     /// <summary>
     /// The fastest H.264 decoder there is: on Windows Media Foundation's on the GPU (DXVA, low-latency mode: about a
     /// millisecond a 1440p picture, where openh264 took 8 on average and 41 at a keyframe), its pictures left on the GPU
-    /// for the window to draw once it offers its adapter (else read back, 4.2 ms more), else openh264.
+    /// for the window to draw once it offers its adapter (else read back, 4.2 ms more); on Linux VA-API through FFmpeg's
+    /// libavcodec; else openh264.
     /// </summary>
     private static IVideoDecoder? OpenDecoder(TimeProvider clock, ILoggerFactory logs, ShownPictureTap shown, out string? problem)
     {
@@ -290,6 +292,21 @@ public static class DesktopProgram
 
                 return Shared(gpu, clock, logs, shown);
             }
+        }
+
+        // On Linux (SteamOS) the GPU through VA-API: FFmpeg's libavcodec, its pictures read back (linux-decode.md).
+        if (OperatingSystem.IsLinux())
+        {
+            var vaapi = VaapiH264Decoder.TryOpen(clock, null, out problem);
+
+            if (vaapi is not null)
+            {
+                Console.WriteLine($"Decoding on the GPU (VA-API, {vaapi.Driver}).");
+
+                return vaapi;
+            }
+
+            Console.WriteLine($"No VA-API decoder: {problem}");
         }
 
         Console.WriteLine("Decoding with openh264 in software.");
