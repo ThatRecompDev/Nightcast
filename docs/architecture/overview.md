@@ -3,7 +3,8 @@
 Phantom.Relay streams the player's own Xbox console (the service calls it xHome) to any engine target: the desktop
 (Windows, Linux and the Steam Deck, macOS), the browser (and through it phones and tablets) and the PS5 homebrew
 console. It plays with any pad the engine reads, keeps a profile per game, and can generate frames between the
-stream's own (a 30 fps game shown at 60).
+stream's own (a 30 fps game shown at 60). How it runs on SteamOS (Gaming Mode, Steam Input, lsfg-vk) and what is
+Windows-only: [steamos](steamos.md).
 
 ## Latency and quality come first
 
