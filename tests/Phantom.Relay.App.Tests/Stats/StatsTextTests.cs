@@ -132,7 +132,7 @@ public sealed class StatsTextTests
                     "GPU zero-copy",
                     "LSFG x2 (quality) 0.8 ms",
                     "RTT 0.4 ms, DTLS 73.0 ms, video 14.0 Mbit/s, sound 0.13",
-                    "lost 2, PLI 1, pad reports 40",
+                    "lost 2, PLI 1, pad reports 40, rumble 0",
                     "input: keyboard and mouse",
                 ],
                 lines);

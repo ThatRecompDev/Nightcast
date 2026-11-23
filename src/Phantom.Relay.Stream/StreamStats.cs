@@ -59,6 +59,9 @@ public sealed record StreamStats
 
     public long InputReportsSent { get; init; }
 
+    /// <summary>The console's vibration reports received on the input channel.</summary>
+    public long RumbleReports { get; init; }
+
     /// <summary>The video received over the last second, in Mbit/s of RTP payload.</summary>
     public double VideoMegabitsPerSecond { get; init; }
 

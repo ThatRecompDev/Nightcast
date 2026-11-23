@@ -419,7 +419,7 @@ public sealed class StreamConnection : IDisposable
             media?.VideoBytes ?? 0,
             media?.AudioBytes ?? 0);
 
-        var stats = _meter.Measure(Stats, in counters) with { IceRoundTrip = link.Ice.RoundTrip };
+        var stats = _meter.Measure(Stats, in counters) with { IceRoundTrip = link.Ice.RoundTrip, RumbleReports = _rumble.Received };
         Publish(stats);
         _log.PictureCadence(stats.NewPicturesPerSecond, stats.RepeatedPicturesPerSecond, stats.Cadence);
         LogUnitSizes(video);

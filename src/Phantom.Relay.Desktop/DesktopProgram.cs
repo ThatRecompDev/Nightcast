@@ -210,6 +210,7 @@ public static class DesktopProgram
         var random = new SeededRandomSource((ulong)clock.GetTimestamp());
         using var connection = new StreamConnection(sessions, transport, doorbell, hostAddress.Value, decoder, sound, profiles, clock, random, new Logger<StreamConnection>(logs));
         var recorder = new StreamRecorder(connection, shown, RecordingPlaces.Find(), clock, new Logger<StreamRecorder>(logs));
+        Console.WriteLine(LosslessScalingLine());
         Console.WriteLine($"Streaming {console.Name}, asking for {settings.Resolution}, bitrate feedback {feedback.Describe()}. F3 shows the stats, F9 records, F11 fullscreen; Escape (or View+Menu held) ends.");
         connection.Start(console.ServerId, settings, feedback);
 
@@ -219,6 +220,19 @@ public static class DesktopProgram
         FinishRecordings(recorder, pump);
 
         return Outcome(connection.Stats);
+    }
+
+    /// <summary>Whether the user's Lossless Scaling was found through Steam, and where: LSFG and LS1 need it.</summary>
+    private static string LosslessScalingLine()
+    {
+        var library = Phantom.Relay.Lsfg.LosslessLocator.Find(null, Phantom.Relay.Lsfg.LosslessLocator.SteamLibraries());
+
+        if (library is null)
+        {
+            return "Lossless Scaling: not found in Steam's libraries (LSFG and LS1 cannot run).";
+        }
+
+        return $"Lossless Scaling: found ({Path.GetDirectoryName(library)}); LSFG and LS1 are in the menu (View+Menu).";
     }
 
     /// <summary>A recording stopped as the window closed is finished (and compared) before the decoder goes.</summary>
@@ -316,7 +330,8 @@ public static class DesktopProgram
         using var playStation = new PlayStationPads();
         playStation.Start();
 
-        var pads = new CombinedGamepads(new XInputGamepads(), playStation, InputLimits.DefaultGamepads);
+        var xbox = new GamepadsWithFeedback(new XInputGamepads(), new XInputMotors());
+        var pads = new CombinedGamepads(xbox, playStation, InputLimits.DefaultGamepads);
         Run(connection, recorder, profile, pads, new WindowsSystemFonts(), new BorderlessFullscreen(fullscreen), pump, clock, log);
         playStation.Stop();
     }

@@ -17,6 +17,8 @@ public static class LosslessLocator
     // Steam's install folder, written by Steam's own installer for the user.
     private const string SteamKey = @"Software\Valve\Steam";
     private const string SteamPathValue = "SteamPath";
+    private const string MachineSteamKey = @"SOFTWARE\WOW6432Node\Valve\Steam";
+    private const string InstallPathValue = "InstallPath";
     private const string PathKey = "\"path\"";
     private const char Quote = '"';
 
@@ -49,8 +51,7 @@ public static class LosslessLocator
             return [];
         }
 
-        using var key = Registry.CurrentUser.OpenSubKey(SteamKey);
-        var install = key?.GetValue(SteamPathValue) as string;
+        var install = SteamInstall();
 
         if (string.IsNullOrEmpty(install))
         {
@@ -65,6 +66,26 @@ public static class LosslessLocator
         }
 
         return ParseLibraryFolders(File.ReadAllText(folders));
+    }
+
+    /// <summary>
+    /// Steam's install folder: the user's own entry, else the machine's (Steam's installer writes both; a user who never
+    /// started Steam has only the machine's).
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static string? SteamInstall()
+    {
+        using (var user = Registry.CurrentUser.OpenSubKey(SteamKey))
+        {
+            if (user?.GetValue(SteamPathValue) is string path && path.Length > 0)
+            {
+                return path;
+            }
+        }
+
+        using var machine = Registry.LocalMachine.OpenSubKey(MachineSteamKey);
+
+        return machine?.GetValue(InstallPathValue) as string;
     }
 
     /// <summary>The "path" values of a libraryfolders.vdf, unescaped, in file order.</summary>

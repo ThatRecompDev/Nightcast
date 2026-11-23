@@ -18,6 +18,7 @@ using Phantom.Relay.Profiles.Input;
 using Phantom.Relay.Stream;
 using Phantom.Relay.Stream.Media;
 using Phantom.Relay.Stream.Media.Gpu;
+using Phantom.Relay.Xbox.Input;
 
 namespace Phantom.Relay.App;
 
@@ -42,7 +43,9 @@ namespace Phantom.Relay.App;
 /// title and over the picture's top-left corner (in the stats' block while F3 shows them).
 /// F11 or Alt+Enter toggles fullscreen (<see cref="IWindowMode"/>, the head's: the engine's window has no fullscreen
 /// call yet), which hides the cursor. Escape closes the window, except while keyboard and mouse play, when it is the
-/// game's and Shift+Escape closes it; on the pad alone View and Menu held together close it (<see cref="QuitChord"/>); closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
+/// game's and Shift+Escape closes it. On the pad alone, View and Menu pressed together open Relay's menu (<see cref="PadMenu"/>:
+/// every setting above), and held for two seconds close the window (<see cref="MenuChord"/>). F2 or the menu shows the
+/// picture with bars or stretched on a screen of another shape (<see cref="PictureFit"/>); closing it stops the stream, and with it the session on the console. A stream that ends by itself (taken over on
 /// the Xbox, failed) closes the window too.
 /// </summary>
 public sealed class StreamApplication : IApplication
@@ -66,7 +69,10 @@ public sealed class StreamApplication : IApplication
     private readonly IStreamRecorder _recorder;
     private readonly StatsOverlay _recordOverlay;
     private readonly IWindowMode _mode;
-    private readonly QuitChord _quitChord = new();
+    private readonly MenuChord _chord = new();
+    private readonly PadMenu _menu = new();
+    private readonly StatsOverlay _menuOverlay;
+    private PictureFit _fit = PictureFit.Bars;
 
     private TimeSpan _now;
     private string? _recording;
@@ -98,6 +104,7 @@ public sealed class StreamApplication : IApplication
         _picture = new StreamPicture(device, stream);
         _overlay = new StatsOverlay(device, window, fonts, log);
         _recordOverlay = new StatsOverlay(device, window, fonts, log);
+        _menuOverlay = new StatsOverlay(device, window, fonts, log);
     }
 
     public void Initialize()
@@ -105,6 +112,7 @@ public sealed class StreamApplication : IApplication
         _picture.Initialize();
         _overlay.Initialize();
         _recordOverlay.Initialize();
+        _menuOverlay.Initialize();
         ShowTitle();
 
         _mode.Begin();
@@ -177,9 +185,11 @@ public sealed class StreamApplication : IApplication
     {
         _rumble.Stop();
         _recorder.Stop();
+
         _picture.Cleanup();
         _overlay.Cleanup();
         _recordOverlay.Cleanup();
+        _menuOverlay.Cleanup();
         _stream.Stop();
     }
 
@@ -192,7 +202,7 @@ public sealed class StreamApplication : IApplication
     private void Present()
     {
         long started = _clock.GetTimestamp();
-        var destination = PictureLetterbox.Of(_window.Width, _window.Height);
+        var destination = PictureLetterbox.Of(_window.Width, _window.Height, _fit);
         _picture.Take();
         _picture.Prepare(destination, _window.Width, _window.Height);
         long taken = _clock.GetTimestamp();
@@ -219,7 +229,11 @@ public sealed class StreamApplication : IApplication
     [HotPath]
     private void DrawStats()
     {
-        if (_showStats)
+        if (_menu.IsOpen)
+        {
+            _menuOverlay.Draw();
+        }
+        else if (_showStats)
         {
             _overlay.Draw();
         }
@@ -242,12 +256,13 @@ public sealed class StreamApplication : IApplication
             {
                 QuitUnlessPlayed(input);
             }
+            else if (inputEvent.Key == Key.F2)
+            {
+                ToggleFit();
+            }
             else if (inputEvent.Key == Key.F3)
             {
-                _showStats = !_showStats;
-                _shownStats = null;
-                _overlay.Clear();
-                _picture.TimePasses(_showStats);
+                ToggleStats();
             }
             else if (inputEvent.Key is Key.F4 or Key.F5 or Key.F8)
             {
@@ -342,6 +357,172 @@ public sealed class StreamApplication : IApplication
         }
     }
 
+    /// <summary>
+    /// Relay's pad chord and menu before the pad goes out: View and Menu together open the menu (held, they end the
+    /// stream); while the chord is held or the menu is open the console gets the pad at rest.
+    /// </summary>
+    private XboxPadState FollowPadMenu(in XboxPadState pad)
+    {
+        var step = _chord.Step(in pad, _now);
+
+        if (step == ChordStep.Quit)
+        {
+            _window.Quit();
+        }
+        else if (step == ChordStep.OpenMenu)
+        {
+            ToggleMenu(pad.Buttons);
+        }
+        else if (_menu.IsOpen)
+        {
+            Choose(_menu.Step(pad.Buttons));
+        }
+
+        if (step != ChordStep.None || _menu.IsOpen)
+        {
+            return default;
+        }
+
+        return pad;
+    }
+
+    private void ToggleMenu(XboxButtons held)
+    {
+        if (_menu.IsOpen)
+        {
+            _menu.Close();
+        }
+        else
+        {
+            _menu.Open(held);
+        }
+
+        ShowMenu();
+    }
+
+    /// <summary>A row chosen on the pad does what its key does; the rows are shown again with the new values.</summary>
+    private void Choose(MenuItem? item)
+    {
+        if (item is not null)
+        {
+            Apply(item.Value);
+        }
+
+        if (_menu.Changed)
+        {
+            ShowMenu();
+        }
+    }
+
+    private void Apply(MenuItem item)
+    {
+        switch (item)
+        {
+            case MenuItem.Stats:
+                ToggleStats();
+                break;
+            case MenuItem.FrameGeneration:
+                SwitchGeneration(Key.F4);
+                break;
+            case MenuItem.LsfgSetting:
+                SwitchGeneration(Key.F5);
+                break;
+            case MenuItem.Multiplier:
+                SwitchGeneration(Key.F8);
+                break;
+            case MenuItem.Upscaler:
+                SwitchUpscaler();
+                break;
+            case MenuItem.Sharpness:
+                SwitchSharpness();
+                break;
+            case MenuItem.PictureFit:
+                ToggleFit();
+                break;
+            case MenuItem.Fullscreen:
+                ToggleFullscreen();
+                break;
+            case MenuItem.Record:
+                ToggleRecording();
+                break;
+            case MenuItem.Close:
+                _menu.Close();
+                break;
+            default:
+                _window.Quit();
+                break;
+        }
+    }
+
+    private void ShowMenu()
+    {
+        if (!_menu.IsOpen)
+        {
+            _menuOverlay.Clear();
+
+            return;
+        }
+
+        _menuOverlay.Show(_menu.Lines(MenuValue));
+    }
+
+    /// <summary>What a row shows beside its label: the setting as it is now.</summary>
+    private string MenuValue(MenuItem item)
+    {
+        return item switch
+        {
+            MenuItem.Stats => OnOff(_showStats),
+            MenuItem.FrameGeneration => _generation.Describe(_stream.Stats.NewPicturesPerSecond),
+            MenuItem.Upscaler => _picture.Describe(Report().Upscale),
+            MenuItem.PictureFit => FitName(_fit),
+            MenuItem.Fullscreen => OnOff(_mode.Fullscreen),
+            MenuItem.Record => _recording ?? "off",
+            _ => string.Empty,
+        };
+    }
+
+    private static string OnOff(bool on)
+    {
+        if (on)
+        {
+            return "on";
+        }
+
+        return "off";
+    }
+
+    private static string FitName(PictureFit fit)
+    {
+        if (fit == PictureFit.Stretch)
+        {
+            return "stretched to the screen";
+        }
+
+        return "16:9 with bars";
+    }
+
+    /// <summary>F3: the stats block on or off.</summary>
+    private void ToggleStats()
+    {
+        _showStats = !_showStats;
+        _shownStats = null;
+        _overlay.Clear();
+        _picture.TimePasses(_showStats);
+    }
+
+    /// <summary>F2: 16:9 with bars, or stretched to a screen of another shape.</summary>
+    private void ToggleFit()
+    {
+        if (_fit == PictureFit.Bars)
+        {
+            _fit = PictureFit.Stretch;
+        }
+        else
+        {
+            _fit = PictureFit.Bars;
+        }
+    }
+
     /// <summary>F6 picks the next upscaler (FSR 1, LS1, LS1 performance, SGSR, xBR, off); the title shows it at once.</summary>
     private void SwitchUpscaler()
     {
@@ -432,12 +613,8 @@ public sealed class StreamApplication : IApplication
     private void SendPad(InputFrame input, double seconds)
     {
         _now += TimeSpan.FromSeconds(seconds);
-        var pad = _pads.Compose(input, (float)seconds);
-
-        if (_quitChord.Held(in pad, _now))
-        {
-            _window.Quit();
-        }
+        var composed = _pads.Compose(input, (float)seconds);
+        var pad = FollowPadMenu(in composed);
 
         if (_reports.ShouldSend(in pad, input.Focused, _now, out var report))
         {

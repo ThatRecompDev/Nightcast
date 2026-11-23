@@ -121,7 +121,7 @@ public static class StatsText
             Shorten(pictures.Path),
             Shorten(pictures.FrameGeneration),
             string.Create(invariant, $"RTT {Milliseconds(stats.IceRoundTrip)}, DTLS {Milliseconds(stats.DtlsTime)}, video {stats.VideoMegabitsPerSecond:F1} Mbit/s, sound {stats.AudioMegabitsPerSecond:F2}"),
-            string.Create(invariant, $"lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}"),
+            string.Create(invariant, $"lost {stats.PacketsLost}, PLI {stats.KeyframeRequests}, pad reports {stats.InputReportsSent}, rumble {stats.RumbleReports}"),
             .. Optional(upscale),
             string.Create(invariant, $"input: {Hands(source)}"),
         ];
