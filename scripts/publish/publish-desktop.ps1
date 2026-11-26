@@ -34,6 +34,11 @@
 
 .PARAMETER Release
     Stamp a version and publish both builds as one GitHub release.
+
+.PARAMETER TurnKey
+    A private build only: the path of a Cloudflare TURN key file ({"keyId": ..., "apiToken": ...}, the devices
+    gateway's turn.json), copied beside the build as turn.json, so the stream can relay when no direct path reaches
+    the console. It goes beside the file, never into it, and never with -Release: a public release carries no key.
 #>
 [CmdletBinding()]
 param(
@@ -41,7 +46,8 @@ param(
     [ValidateSet('win-x64', 'linux-x64')]
     [string] $Runtime = 'win-x64',
     [switch] $Zip,
-    [switch] $Release
+    [switch] $Release,
+    [string] $TurnKey
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +59,16 @@ $linuxSuffix = '-linux-x64'
 $ffmpeg = Join-Path $root 'artifacts/native/linux-x64/ffmpeg'
 $ffmpegLibraries = @('libavcodec.so.62', 'libavutil.so.60')
 $ffmpegNotices = @('COPYING.LGPLv2.1', 'FFMPEG-BUILD.txt')
+
+$turnKeyName = 'turn.json'
+
+if ($TurnKey -and $Release) {
+    throw 'A TURN key goes only into a private build, never into a public release.'
+}
+
+if ($TurnKey -and -not (Test-Path $TurnKey -PathType Leaf)) {
+    throw "No TURN key file at $TurnKey."
+}
 
 if (-not $Output) {
     $Output = Join-Path $root 'artifacts/publish/desktop'
@@ -145,6 +161,17 @@ function Publish-Build([string] $rid, [string] $folder) {
     }
 
     Test-Binaries | Out-Host
+
+    # A private build's TURN key beside it; any other build leaves none behind from an earlier private one.
+    $keyFile = Join-Path $folder $turnKeyName
+
+    if ($TurnKey) {
+        Copy-Item $TurnKey $keyFile -Force
+        Write-Host "TURN key copied beside the build (private: never release this folder)."
+    }
+    elseif (Test-Path $keyFile) {
+        Remove-Item $keyFile -Force
+    }
 
     $name = $names[$rid]
     $built = Join-Path $folder $builtNames[$rid]

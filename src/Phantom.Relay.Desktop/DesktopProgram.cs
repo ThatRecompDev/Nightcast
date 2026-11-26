@@ -26,6 +26,7 @@ using Phantom.Relay.Desktop.LsfgVk;
 using Phantom.Relay.Desktop.Pictures;
 using Phantom.Relay.Desktop.Places;
 using Phantom.Relay.Desktop.Recording;
+using Phantom.Relay.Desktop.Relay;
 using Phantom.Relay.Desktop.Setup;
 using Phantom.Relay.Desktop.Stills;
 using Phantom.Relay.Desktop.Updates;
@@ -289,6 +290,16 @@ public static class DesktopProgram
         var random = new SeededRandomSource((ulong)run.Clock.GetTimestamp());
         using var connection = new StreamConnection(run.Sessions, transport, doorbell, hostAddress, decoder, sound, run.Profiles, run.Clock, random, new Logger<StreamConnection>(logs));
         using var closing = new ConsoleClosing(connection);
+
+        // Away from home: the user's own TURN relay, when their turn.json is there; off without it.
+        var relay = CloudflareTurn.Find(logs.CreateLogger(typeof(CloudflareTurn).FullName!));
+
+        if (relay is not null)
+        {
+            connection.RelayThrough(relay);
+        }
+
+        pump.Drain();
 
         // The recordings and the screenshots, saved where the user keeps videos and pictures.
         var notices = new NoticeBoard(run.Clock);

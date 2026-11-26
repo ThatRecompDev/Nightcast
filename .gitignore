@@ -11,3 +11,6 @@ TestResults/
 *.token
 .env
 .env.*
+
+# A TURN key (Cloudflare key id and API token) for a private build: beside the build, never in the repository.
+turn.json
