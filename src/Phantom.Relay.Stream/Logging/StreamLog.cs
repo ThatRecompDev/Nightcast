@@ -26,6 +26,15 @@ public static partial class StreamLog
     [LoggerMessage(Level = LogLevel.Information, Message = "Latest access units, bytes: {Sizes}")]
     public static partial void UnitSizes(this ILogger log, string sizes);
 
+    [LoggerMessage(Level = LogLevel.Information, Message = "ICE connected to the console's {Kind} candidate {Path} (of {Candidates}), round trip {RoundTripMs:F1} ms")]
+    public static partial void IceConnected(this ILogger log, string kind, string path, int candidates, double roundTripMs);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "TURN relay allocated in {Milliseconds:F0} ms")]
+    public static partial void RelayAllocated(this ILogger log, double milliseconds);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "TURN relay unavailable ({State}, error {Code}); direct paths only")]
+    public static partial void RelayUnavailable(this ILogger log, string state, int code);
+
     [LoggerMessage(Level = LogLevel.Information, Message = "Bitrate feedback offered: {Offered}; the answer kept: {Kept}")]
     public static partial void BitrateFeedback(this ILogger log, string offered, string kept);
 

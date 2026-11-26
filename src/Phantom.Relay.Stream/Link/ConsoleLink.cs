@@ -14,6 +14,7 @@ using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Ice;
 using Phantom.Relay.WebRtc.Srtp;
+using Phantom.Relay.WebRtc.Turn;
 using SessionCandidate = Phantom.Relay.Xbox.Session.IceCandidate;
 using WebRtcCandidate = Phantom.Relay.WebRtc.Ice.IceCandidate;
 
@@ -33,7 +34,10 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private const int Other = 2;
     private const int CountKinds = 3;
 
-    /// <summary>A DTLS record never exceeds this on a LAN path (the Ethernet payload less the IP and UDP headers).</summary>
+    /// <summary>
+    /// A DTLS record never exceeds this: below the Ethernet payload less the IP and UDP headers, and below what an
+    /// internet path's tunnels (VPN, PPPoE, Teredo) leave, so it is the same at home and away.
+    /// </summary>
     private const int DtlsLimit = 1200;
 
     private readonly IDatagramTransport _transport;
@@ -55,7 +59,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private DtlsTransport? _session;
     private long _handshakeStartedAt;
     private long _channelsStartedAt;
-    private DatagramEndpoint? _path;
+    private TurnClient? _relay;
 
     /// <summary>The media path sends the bitrate <paramref name="feedback"/> the offer proposed.</summary>
     public ConsoleLink(IDatagramTransport transport, IceCredentials local, DecodeWorker video, IStreamAudioSink audio, PadMailbox pads, RumbleMailbox rumble, TimeProvider clock, IRandomSource random, BitrateFeedback feedback)
@@ -103,10 +107,47 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
 
     public int OtherDatagrams => _counts[Other];
 
+    /// <summary>The TURN relay, once <see cref="StartRelay"/> asked for one.</summary>
+    public TurnClient? Relay => _relay;
+
+    /// <summary>True once the relay holds an allocation, or ended without one: the ICE exchange need not wait for it.</summary>
+    public bool RelaySettled => _relay is null || _relay.State == TurnState.Allocated || _relay.State == TurnState.Failed;
+
     /// <summary>Our host candidate at <paramref name="hostAddress"/>, as the service's ICE exchange carries it.</summary>
     public SessionCandidate HostCandidate(uint hostAddress)
     {
         return new SessionCandidate(_agent.HostCandidate(hostAddress).ToLine(), "0", 0);
+    }
+
+    /// <summary>
+    /// Every candidate of ours for the ICE exchange: the host one, and with a relay allocated our NAT's mapping and our
+    /// relayed address.
+    /// </summary>
+    public IReadOnlyList<SessionCandidate> LocalCandidates(uint hostAddress)
+    {
+        var candidates = new List<SessionCandidate> { HostCandidate(hostAddress) };
+
+        if (_relay?.State != TurnState.Allocated)
+        {
+            return candidates;
+        }
+
+        foreach (var candidate in new[] { IceAgent.ReflexiveCandidate(_relay), IceAgent.RelayCandidate(_relay) })
+        {
+            if (candidate is not null)
+            {
+                candidates.Add(new SessionCandidate(candidate.ToLine(), "0", 0));
+            }
+        }
+
+        return candidates;
+    }
+
+    /// <summary>Asks <paramref name="server"/> for a relayed address on this link's socket; the pump carries the exchange.</summary>
+    public void StartRelay(TurnServer server)
+    {
+        _relay = new TurnClient(_transport, _clock, _random, server);
+        _relay.Start();
     }
 
     /// <summary>
@@ -123,18 +164,26 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
         }
 
         var candidates = new List<WebRtcCandidate>(SessionIce.ReadCandidates(answer));
+        var read = new List<WebRtcCandidate>();
 
+        // Away from home the console's reachable address is its Teredo candidate, read as its router's IPv4 address.
         foreach (var line in exchanged)
         {
-            if (WebRtcCandidate.TryParse(line.Candidate, out var candidate) && !candidates.Exists(c => c.Endpoint == candidate!.Endpoint))
+            read.Clear();
+            WebRtcCandidate.ReadInto(line.Candidate, read);
+
+            foreach (var candidate in read)
             {
-                candidates.Add(candidate!);
+                if (!candidates.Exists(c => c.Endpoint == candidate.Endpoint))
+                {
+                    candidates.Add(candidate);
+                }
             }
         }
 
         _answer = answer;
         RemoteCandidates = candidates.Count;
-        _agent.Start(remote, candidates);
+        _agent.Start(remote, candidates, _relay);
 
         return true;
     }
@@ -196,15 +245,25 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     /// </summary>
     public void Pump()
     {
+        _relay?.Service();
         _agent.Service();
         SendDtls();
         _transport.Receive(_ring);
 
         while (_ring.TryPeek(out var frame))
         {
+            var source = DatagramFrame.Source(frame);
             var payload = DatagramFrame.Payload(frame);
 
-            if (!_agent.TryHandle(DatagramFrame.Source(frame), payload))
+            // The relay's server sends its own answers and the console's datagrams it relays; anything else is direct.
+            if (_relay is not null && _relay.TryHandle(source, payload, out var peer, out var relayed))
+            {
+                if (!relayed.IsEmpty && !_agent.TryHandleRelayed(peer, relayed))
+                {
+                    Route(relayed);
+                }
+            }
+            else if (!_agent.TryHandle(source, payload))
             {
                 Route(payload);
             }
@@ -217,16 +276,19 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
         SendDtls();
     }
 
-    /// <summary>RTCP feedback goes straight out on the selected path, beside the DTLS records.</summary>
+    /// <summary>RTCP feedback goes straight out on the selected path (through the relay when it is relayed), beside the DTLS records.</summary>
     public void Send(ReadOnlySpan<byte> packet)
     {
-        if (_path is not null)
+        if (_session is not null)
         {
-            _transport.TrySend(_path.Value, packet);
+            _agent.SendSelected(packet);
         }
     }
 
-    /// <summary>Ends the DTLS session with a close alert, sent at once, and stops a handshake still running.</summary>
+    /// <summary>
+    /// Ends the DTLS session with a close alert, sent at once, stops a handshake still running, and gives the relay's
+    /// allocation back.
+    /// </summary>
     public void Dispose()
     {
         if (_session is not null)
@@ -234,6 +296,7 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
             CloseSession(_session);
         }
 
+        _relay?.Close();
         _bridge?.Close();
 
         // A handshake still running reads the bridge until the close reaches it; it is disposed only when none is.
@@ -260,7 +323,6 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
     private void Open(DtlsTransport session)
     {
         _session = session;
-        _path = _agent.Selected;
         Media = new MediaReceiver(_client!.Profile!.Value, _client.KeyingMaterial!, VideoPayloads.Of(_answer), this, _video, _audio, _clock, _feedback, AnswerFeedback.Of(_answer).TransportWideId);
         Channels = new ConsoleChannels(session, _bridge!, _pads, _rumble, _clock, _random);
         Channels.Open();
@@ -269,16 +331,14 @@ public sealed class ConsoleLink : IRtcpOutput, IDisposable
 
     private void SendDtls()
     {
-        var path = _agent.Selected;
-
-        if (_bridge is null || path is null)
+        if (_bridge is null || _agent.Selected is null)
         {
             return;
         }
 
         while (_bridge.TryTakeOutgoing(out var datagram))
         {
-            _transport.TrySend(path.Value, datagram);
+            _agent.SendSelected(datagram);
         }
     }
 

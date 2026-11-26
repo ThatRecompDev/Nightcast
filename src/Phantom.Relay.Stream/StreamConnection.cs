@@ -16,6 +16,7 @@ using Phantom.Relay.Stream.Network;
 using Phantom.Relay.Stream.Sdp;
 using Phantom.Relay.WebRtc.Dtls;
 using Phantom.Relay.WebRtc.Ice;
+using Phantom.Relay.WebRtc.Turn;
 using Phantom.Relay.Xbox.Input;
 using Phantom.Relay.Xbox.Session;
 
@@ -38,6 +39,9 @@ public sealed class StreamConnection : IDisposable
 {
     private static readonly TimeSpan IceDeadline = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan DtlsDeadline = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long the relay's allocation may hold up the ICE exchange: two round trips to the nearest edge are far less.</summary>
+    private static readonly TimeSpan RelayDeadline = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan StatsInterval = TimeSpan.FromSeconds(1);
 
     /// <summary>NOT DATA: how long the pads' goodbye may wait for the console's acknowledgement before the session ends.</summary>
@@ -73,6 +77,7 @@ public sealed class StreamConnection : IDisposable
     private readonly StreamStatsMeter _meter;
 
     private Thread? _thread;
+    private TurnServer? _relayServer;
     private BitrateFeedback _feedback = BitrateFeedback.Off;
     private StreamStats _stats = StreamStats.Idle;
     private StreamProfile _profile;
@@ -131,6 +136,22 @@ public sealed class StreamConnection : IDisposable
 
     /// <summary>The profile for the running title: the default one until the console names a title a profile lists.</summary>
     public StreamProfile Profile => Volatile.Read(ref _profile);
+
+    /// <summary>
+    /// Gives the stream a TURN relay for when no direct path reaches the console (away from home, behind strict NATs);
+    /// called before <see cref="Start(string, StreamSettings)"/>. Without one the stream uses direct paths only.
+    /// </summary>
+    public void RelayThrough(TurnServer server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+
+        if (_thread is not null)
+        {
+            throw new InvalidOperationException("The relay is given before the stream starts.");
+        }
+
+        _relayServer = server;
+    }
 
     /// <summary>Starts the session on <paramref name="serverId"/> on the network thread and returns at once.</summary>
     public void Start(string serverId, StreamSettings settings)
@@ -241,7 +262,8 @@ public sealed class StreamConnection : IDisposable
 
         LogFeedback(answer);
         using var link = new ConsoleLink(_transport, local, video, _audio, _pads, _rumble, _clock, _random, _feedback);
-        var exchanged = Wait(_sessions.ExchangeIceAsync(session, [link.HostCandidate(_hostAddress)], _stop.Token));
+        AllocateRelay(link);
+        var exchanged = Wait(_sessions.ExchangeIceAsync(session, link.LocalCandidates(_hostAddress), _stop.Token));
         link.StartIce(answer, exchanged);
         Publish(Stats with { State = StreamState.Connecting });
 
@@ -282,6 +304,35 @@ public sealed class StreamConnection : IDisposable
         }
     }
 
+    /// <summary>
+    /// With a relay given, asks it for an allocation before our candidates go out, so they carry the relayed address;
+    /// a relay that does not answer in time is left out and the stream goes on without it.
+    /// </summary>
+    private void AllocateRelay(ConsoleLink link)
+    {
+        var server = _relayServer;
+
+        if (server is null)
+        {
+            return;
+        }
+
+        long askedAt = _clock.GetTimestamp();
+        link.StartRelay(server);
+        PumpUntil(link, RelayDeadline, () => link.RelaySettled);
+        var relay = link.Relay!;
+        double elapsedMs = _clock.GetElapsedTime(askedAt).TotalMilliseconds;
+
+        if (relay.State == TurnState.Allocated)
+        {
+            _log.RelayAllocated(elapsedMs);
+        }
+        else if (_log.IsEnabled(LogLevel.Warning))
+        {
+            _log.RelayUnavailable(relay.State.ToString(), relay.Refusal);
+        }
+    }
+
     /// <summary>The bitrate feedback offered and what of it the console's answer kept, for the live comparisons.</summary>
     private void LogFeedback(string answer)
     {
@@ -299,6 +350,13 @@ public sealed class StreamConnection : IDisposable
         if (link.Ice.State != IceAgentState.Connected)
         {
             return Unless("ICE found no path to the console");
+        }
+
+        // Which path it took (a host candidate at home, a reflexive one away), never the address itself.
+        if (_log.IsEnabled(LogLevel.Information))
+        {
+            string path = link.Ice.SelectedRelayed ? "through the relay" : "directly";
+            _log.IceConnected(link.Ice.SelectedKind?.ToString() ?? "unknown", path, link.RemoteCandidates, link.Ice.RoundTrip?.TotalMilliseconds ?? 0);
         }
 
         if (!link.StartDtls(certificate))
