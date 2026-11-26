@@ -108,7 +108,21 @@ public static class StunReader
         return BinaryPrimitives.ReadUInt32BigEndian(value) == expected;
     }
 
-    /// <summary>Decodes an IPv4 XOR-MAPPED-ADDRESS value; false for another family or a short value.</summary>
+    /// <summary>
+    /// The ERROR-CODE of an error response (class times 100 plus number, such as 401), or 0 when it carries none.
+    /// </summary>
+    [HotPath]
+    public static int ErrorCode(ReadOnlySpan<byte> message)
+    {
+        if (!TryFind(message, StunFormat.ErrorCode, out var value, out _) || value.Length <= StunFormat.ErrorNumberOffset)
+        {
+            return 0;
+        }
+
+        return ((value[StunFormat.ErrorClassOffset] & StunFormat.ErrorClassMask) * StunFormat.ErrorClassFactor) + value[StunFormat.ErrorNumberOffset];
+    }
+
+    /// <summary>Decodes an IPv4 XOR address value (XOR-MAPPED, XOR-PEER, XOR-RELAYED); false for another family or a short value.</summary>
     [HotPath]
     public static bool TryReadXorMappedAddress(ReadOnlySpan<byte> value, out DatagramEndpoint endpoint)
     {

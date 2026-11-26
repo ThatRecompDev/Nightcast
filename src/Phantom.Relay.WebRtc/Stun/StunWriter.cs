@@ -79,7 +79,14 @@ public ref struct StunWriter
     [HotPath]
     public void AddXorMappedAddress(DatagramEndpoint endpoint)
     {
-        var room = BeginAttribute(StunFormat.XorMappedAddress, StunFormat.IPv4AddressValueLength);
+        AddXorAddress(StunFormat.XorMappedAddress, endpoint);
+    }
+
+    /// <summary>Any XOR address attribute of an IPv4 endpoint (XOR-MAPPED, and TURN's XOR-PEER and XOR-RELAYED).</summary>
+    [HotPath]
+    public void AddXorAddress(ushort type, DatagramEndpoint endpoint)
+    {
+        var room = BeginAttribute(type, StunFormat.IPv4AddressValueLength);
         room[0] = 0;
         room[1] = StunFormat.FamilyIPv4;
 

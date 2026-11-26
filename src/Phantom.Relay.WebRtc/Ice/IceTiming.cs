@@ -17,6 +17,12 @@ public static class IceTiming
     /// <summary>How many times a check is sent before its pair fails.</summary>
     public const int MaxAttempts = 6;
 
+    /// <summary>
+    /// How long the direct pairs are checked alone before the relayed ones join: a LAN answers in a millisecond and an
+    /// open path across the internet in well under a second, and the relay costs a detour and its traffic.
+    /// </summary>
+    public static readonly TimeSpan RelayHeadStart = TimeSpan.FromMilliseconds(1500);
+
     /// <summary>How often the selected pair is checked again once connected, which keeps NAT bindings and consent fresh.</summary>
     public static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(2);
 }

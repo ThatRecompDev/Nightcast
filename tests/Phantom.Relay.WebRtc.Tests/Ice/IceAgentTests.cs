@@ -85,6 +85,45 @@ public sealed class IceAgentTests
     }
 
     [Fact]
+    public void A_check_from_an_address_no_candidate_named_is_learned_and_connects()
+    {
+        var network = Network(InMemoryLinkOptions.Perfect);
+        var (agent, transport) = Agent(network);
+        var console = Peer(network, ConsoleAt, agent);
+        var nowhere = new IceCandidate("8", 1, 2_000_000_000, NowhereAt, IceCandidateKind.Host);
+        agent.Start(ConsoleCredentials, [nowhere]);
+
+        // Away from home the console's NAT shows it under an address its candidates never named.
+        console.Check(AgentAt);
+        Run(agent, transport, [console], 10);
+
+        Assert.Equal(IceAgentState.Connected, agent.State);
+        Assert.Equal(ConsoleAt, agent.Selected);
+        Assert.Equal(IceCandidateKind.PeerReflexive, agent.SelectedKind);
+    }
+
+    [Fact]
+    public void Checks_from_more_unnamed_addresses_than_spares_are_answered_but_not_learned()
+    {
+        var network = Network(InMemoryLinkOptions.Perfect);
+        var (agent, transport) = Agent(network);
+        var nowhere = new IceCandidate("8", 1, 2_000_000_000, NowhereAt, IceCandidateKind.Host);
+        var peers = Enumerable.Range(1, 6).Select(i => Peer(network, DatagramEndpoint.FromOctets(198, 51, 100, (byte)i, 9002), agent)).ToArray();
+        agent.Start(ConsoleCredentials, [nowhere]);
+
+        foreach (var peer in peers)
+        {
+            peer.Check(AgentAt);
+        }
+
+        Run(agent, transport, peers, 1);
+
+        // The one named candidate and the four spares; every check was answered all the same.
+        Assert.Equal(5, agent.Pairs.Count);
+        Assert.All(peers, static p => Assert.Contains(p.Answers, static a => StunReader.Type(a) == StunFormat.BindingSuccess));
+    }
+
+    [Fact]
     public void A_lossy_link_still_connects_through_retransmissions()
     {
         var lossy = InMemoryLinkOptions.Perfect with { Latency = TimeSpan.FromMilliseconds(15), LossRate = 0.4 };

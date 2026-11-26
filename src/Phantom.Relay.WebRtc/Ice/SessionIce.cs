@@ -4,7 +4,7 @@ namespace Phantom.Relay.WebRtc.Ice;
 
 /// <summary>
 /// The ICE part of a session description: the first a=ice-ufrag and a=ice-pwd (with BUNDLE every m-line carries the
-/// same pair) and every UDP IPv4 a=candidate line.
+/// same pair) and every UDP IPv4 a=candidate line, a Teredo line as the IPv4 endpoints it names.
 /// </summary>
 public static class SessionIce
 {
@@ -44,9 +44,9 @@ public static class SessionIce
 
         foreach (string line in Lines(sdp))
         {
-            if (line.StartsWith(CandidateAttribute, StringComparison.Ordinal) && IceCandidate.TryParse(line, out var candidate))
+            if (line.StartsWith(CandidateAttribute, StringComparison.Ordinal))
             {
-                candidates.Add(candidate!);
+                IceCandidate.ReadInto(line, candidates);
             }
         }
 

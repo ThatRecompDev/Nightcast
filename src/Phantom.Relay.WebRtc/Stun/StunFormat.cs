@@ -49,6 +49,15 @@ public static class StunFormat
 
     public const ushort IceControlling = 0x802A;
 
+    /// <summary>ERROR-CODE: two reserved bytes, the class (hundreds) and the number within it.</summary>
+    public const int ErrorClassOffset = 2;
+
+    public const int ErrorNumberOffset = 3;
+
+    public const int ErrorClassMask = 0x07;
+
+    public const int ErrorClassFactor = 100;
+
     /// <summary>The address family of an IPv4 (XOR-)MAPPED-ADDRESS.</summary>
     public const byte FamilyIPv4 = 0x01;
 

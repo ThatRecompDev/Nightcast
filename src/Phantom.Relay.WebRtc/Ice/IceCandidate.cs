@@ -8,7 +8,8 @@ namespace Phantom.Relay.WebRtc.Ice;
 /// <summary>
 /// One UDP IPv4 candidate, read from or written as its SDP line (RFC 8839 section 5.1):
 /// <c>candidate:&lt;foundation&gt; &lt;component&gt; udp &lt;priority&gt; &lt;address&gt; &lt;port&gt; typ &lt;kind&gt; ...</c>.
-/// Other transports and IPv6 are skipped, since the engine's datagram transport is UDP over IPv4.
+/// Other transports and IPv6 are skipped, since the engine's datagram transport is UDP over IPv4; a Teredo IPv6 line
+/// is read as the IPv4 endpoints it names (<see cref="ReadInto"/>).
 /// </summary>
 public sealed record IceCandidate(string Foundation, int Component, uint Priority, DatagramEndpoint Endpoint, IceCandidateKind Kind)
 {
@@ -33,6 +34,58 @@ public sealed record IceCandidate(string Foundation, int Component, uint Priorit
     public static bool TryParse(string line, out IceCandidate? candidate)
     {
         candidate = null;
+
+        return TryReadFields(line, out string[] fields) && TryBuild(fields, out candidate);
+    }
+
+    /// <summary>
+    /// Adds what a candidate line gives to <paramref name="into"/>: its UDP IPv4 candidate, or, for a UDP line at a
+    /// Teredo IPv6 address (<see cref="TeredoAddress"/>), the router's public IPv4 address at the line's own port (open
+    /// where the router forwards it, as UPnP does) and at the Teredo tunnel's port, both server reflexive. Anything else
+    /// adds nothing. Returns how many were added.
+    /// </summary>
+    public static int ReadInto(string line, ICollection<IceCandidate> into)
+    {
+        if (TryParse(line, out var candidate))
+        {
+            into.Add(candidate!);
+
+            return 1;
+        }
+
+        if (!TryReadFields(line, out string[] fields)
+            || !TeredoAddress.TryRead(fields[AddressField], out uint address, out ushort tunnelPort)
+            || !int.TryParse(fields[ComponentField], CultureInfo.InvariantCulture, out int component)
+            || !ushort.TryParse(fields[PortField], CultureInfo.InvariantCulture, out ushort port))
+        {
+            return 0;
+        }
+
+        int before = into.Count;
+        uint direct = IcePriorities.Candidate(IcePriorities.ServerReflexivePreference, IcePriorities.SingleLocalPreference, component);
+        into.Add(new IceCandidate(fields[FoundationField], component, direct, new DatagramEndpoint(address, port), IceCandidateKind.ServerReflexive));
+
+        if (tunnelPort != port)
+        {
+            uint tunnel = IcePriorities.Candidate(IcePriorities.ServerReflexivePreference, IcePriorities.SingleLocalPreference - 1, component);
+            into.Add(new IceCandidate(fields[FoundationField], component, tunnel, new DatagramEndpoint(address, tunnelPort), IceCandidateKind.ServerReflexive));
+        }
+
+        return into.Count - before;
+    }
+
+    /// <summary>The candidate's SDP line without "a=", for the signaling channel.</summary>
+    public string ToLine()
+    {
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{Prefix}{Foundation} {Component} {Udp} {Priority} {Address(Endpoint)} {Endpoint.Port} {TypeKeyword} {KindName(Kind)}");
+    }
+
+    /// <summary>The fields of a UDP candidate line, with or without its "a=" prefix, at any address.</summary>
+    private static bool TryReadFields(string line, out string[] fields)
+    {
+        fields = [];
         var text = line.AsSpan().Trim();
 
         if (text.StartsWith(AttributePrefix, StringComparison.Ordinal))
@@ -45,22 +98,9 @@ public sealed record IceCandidate(string Foundation, int Component, uint Priorit
             return false;
         }
 
-        string[] fields = text[Prefix.Length..].ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        fields = text[Prefix.Length..].ToString().Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-        if (fields.Length < FieldCount || !fields[TransportField].Equals(Udp, StringComparison.OrdinalIgnoreCase) || fields[TypeKeywordField] != TypeKeyword)
-        {
-            return false;
-        }
-
-        return TryBuild(fields, out candidate);
-    }
-
-    /// <summary>The candidate's SDP line without "a=", for the signaling channel.</summary>
-    public string ToLine()
-    {
-        return string.Create(
-            CultureInfo.InvariantCulture,
-            $"{Prefix}{Foundation} {Component} {Udp} {Priority} {Address(Endpoint)} {Endpoint.Port} {TypeKeyword} {KindName(Kind)}");
+        return fields.Length >= FieldCount && fields[TransportField].Equals(Udp, StringComparison.OrdinalIgnoreCase) && fields[TypeKeywordField] == TypeKeyword;
     }
 
     private static bool TryBuild(string[] fields, out IceCandidate? candidate)
