@@ -8,8 +8,9 @@ rules; it is binding and outranks every default. The plan is [docs/architecture/
 ## Things that are easy to get wrong
 
 - **Private builds, private source** (the owner's rule since 2026-11-23, the release repo private since 2026-11-26,
-  how-we-work 1a). The desktop app is released as **Nightcast** exes on a private GitHub repo that holds only a
-  README and releases; builds do not update themselves; the source is never pushed. A release carries nothing of the owner's (tokens, ids, names, paths). Lossless Scaling and NVIDIA's SDK
+  how-we-work 1a). The desktop app is released as **Nightcast** exes on the private GitHub repo
+  ThatRecompDev/Nightcast, which since 2026-11-26 also holds the source (`origin`, pushed only when the owner asks);
+  builds do not update themselves. A release carries nothing of the owner's (tokens, ids, names, paths). Lossless Scaling and NVIDIA's SDK
   are loaded from each user's own install at run time; nothing of them is in this repository or a release.
 - Reuse first, then modularize, then create: search Phantom.Engine before writing anything new. A mechanic any app
   could use (WebRTC, a gamepad source, HTTPS, frame interpolation) goes into the engine, through the engine

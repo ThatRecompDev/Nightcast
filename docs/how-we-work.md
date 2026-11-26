@@ -22,8 +22,8 @@ account. Tests build their payloads by hand from the shapes in the guides.
 The owner's decision of 2026-11-23, changed on 2026-11-26: the desktop app is released as **Nightcast**, as built
 exes on a GitHub repository that holds only a README and its releases (`scripts/publish/publish-desktop.ps1
 -Release`). Since 2026-11-26 that repository is private, for the owner alone, and a build no longer updates itself:
-each build is copied to its device by hand. The source stays in the owner's local git, with no remote, and is never
-pushed anywhere. A release carries nothing of the owner's: no token, credential, console id,
+each build is copied to its device by hand. Since 2026-11-26 the source is pushed to that same private repository
+(`origin`), only when the owner asks; nothing else of it goes anywhere. A release carries nothing of the owner's: no token, credential, console id,
 gamertag, e-mail, user name or path of the owner's machines (the build maps its paths away, and the binaries are
 scanned before upload). Third-party software the app can use at run time (Lossless Scaling's frame generation and
 upscalers, NVIDIA's Optical Flow SDK for FRUC) is never in the repository or a release: each user's own install is
