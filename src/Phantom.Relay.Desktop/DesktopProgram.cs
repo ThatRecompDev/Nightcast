@@ -59,8 +59,9 @@ namespace Phantom.Relay.Desktop;
 /// bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
 /// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
 /// <c>--no-feedback</c> turns it off. On Windows the stream starts fullscreen (borderless,
-/// <see cref="BorderlessFullscreen"/>); <c>--windowed</c> starts it as a window. A published build updates itself from
-/// Nightcast's public releases at start, before the window (<see cref="SelfUpdater"/>); <c>--no-update</c> skips it.
+/// <see cref="BorderlessFullscreen"/>); <c>--windowed</c> starts it as a window. A build no longer updates itself: Nightcast's
+/// release repository is private, and each build is copied to its device by hand (<c>--no-update</c> is still accepted
+/// and does nothing).
 /// <c>--external-frame-generation</c> presents only the game's new pictures from the start, for another external frame
 /// generator (F12 or the menu switch it live; <see cref="StreamApplication.PresentNewPicturesOnly"/>). On Linux frame
 /// generation is lsfg-vk, run inside Nightcast's own process (<see cref="LsfgVkFrameGeneration"/>): loaded before the
@@ -77,7 +78,6 @@ public static class DesktopProgram
     private const string SignOutArgument = "--sign-out";
     private const string NoFeedbackArgument = "--no-feedback";
     private const string WindowedArgument = "--windowed";
-    private const string NoUpdateArgument = "--no-update";
     private const string HomeVariable = "HOME";
     private const string DataHomeVariable = "XDG_DATA_HOME";
 
@@ -128,7 +128,7 @@ public static class DesktopProgram
     {
         if (!BitrateFeedbackArguments.TryParse(args, out var asked, out string? wrong))
         {
-            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}, {NoUpdateArgument}, {ExternalFrameGenerationArgument}");
+            Console.WriteLine($"{wrong}. Switches: {BitrateFeedbackArguments.Usage}, {NoFeedbackArgument}, {WindowedArgument}, {ExternalFrameGenerationArgument}");
 
             return new RunOutcome(Refused, false);
         }
@@ -142,12 +142,8 @@ public static class DesktopProgram
             cancellation.Cancel();
         };
 
-        // A published build first takes a newer release, and starts that in its place.
-        if (!args.Contains(NoUpdateArgument) && await SelfUpdater.TryUpdateAsync(Environment.ProcessPath, typeof(DesktopProgram).Assembly.GetName().Version, args, Console.Out, cancellation.Token))
-        {
-            return new RunOutcome(Succeeded, false);
-        }
-
+        // No update check: the release repository is private since 2026-11-26 (the owner's call), so a build is copied
+        // to each device by hand. SelfUpdater stays for the day it is turned back on.
         var clock = TimeProvider.System;
         var store = UserStorage.Open(PersistentArea.ForApp(RelayApp.Id));
         using var client = new HttpClient();
