@@ -44,6 +44,44 @@ Every call goes to the default region's base address with `Authorization: Bearer
 | `POST {session}/keepalive` | every 30 seconds |
 | `DELETE {session}` | stop |
 
+## Away from home
+
+The ICE exchange is the same at home and away; only the candidates that can work differ. Relay's transport is UDP
+over IPv4 (the engine's), and it sends only its host candidate, so away from home the path rests on three things:
+
+- **The console's Teredo candidate.** A console with remote features on offers, beside its LAN host candidate, a
+  candidate at a Teredo IPv6 address (`2001:0000::/32`). RFC 4380 builds that address from the console router's
+  public IPv4 address and the Teredo tunnel's public port, both inverted, so `TeredoAddress` reads them back and
+  `IceCandidate.ReadInto` turns the line into two server-reflexive IPv4 candidates: the public address at the
+  candidate's own port (open where the router forwards it, as UPnP does) and at the tunnel's port. Open clients
+  describe the same reading; which of the two ports answers is **not seen yet**.
+- **Our checks open our NAT.** Relay is the controlling agent and checks first; each check leaves our NAT mapped
+  toward the console, so the console's answers and checks come back through it.
+- **Peer-reflexive learning.** A check from an address no candidate named (the console as its NAT shows it) is
+  answered and becomes a pair of its own, checked at once (RFC 8445 7.3.1.3; four spare pairs, made up front), and a
+  pair whose checks failed is checked again when the console's own check arrives through it.
+
+- **A TURN relay (optional, the user's own).** Where none of the above gets through (strict NATs on both sides, a
+  carrier's NAT), the stream relays through TURN (RFC 8656, `Phantom.Relay.WebRtc.Turn`). The service hands out no
+  relay for console streaming, so it is the user's: a Cloudflare TURN key in `turn.json` (`{"keyId": …, "apiToken":
+  …}`, the devices gateway's shape) beside the executable or in Nightcast's local application data folder. The
+  desktop asks Cloudflare for credentials that last a day (`CloudflareTurn`), takes its plain UDP URL, and the stream
+  allocates on the same socket as ICE before the exchange (at most 3 s), so our candidates carry the relayed address
+  and our NAT's mapping (`typ relay`, `typ srflx`). Each console candidate is then paired twice: directly and through
+  a channel on the relay (which also installs the permission; the relay refuses private addresses, and those pairs
+  fail at once). Relayed checks start 1.5 s after the direct ones (`IceTiming.RelayHeadStart`), so a direct path wins
+  wherever one exists; DTLS, SRTP and RTCP then go through the relay as ChannelData (4 bytes more per datagram).
+  Without `turn.json` nothing is asked and nothing changes. A public release never carries the file
+  (`publish-desktop.ps1 -TurnKey` copies it beside a private build only and refuses `-Release`). Cloudflare bills TURN
+  traffic past 1,000 GB a month; a relayed 1440p stream is about 12.6 GB an hour. **Not seen yet**: whether the
+  console takes a relayed candidate (standard ICE says it does).
+
+The desktop's log says whether a relay was set up, which kind of candidate ICE took (`Host` at home,
+`ServerReflexive` or `PeerReflexive` away) and whether directly or through the relay, never an address or a
+credential. Not covered: a console without IPv6/Teredo, without a forwarded port and without a relay; and native IPv6
+(needs the engine's transport to carry IPv6, an engine lane). On the console: Settings, Devices & connections, Remote
+features on, power mode Sleep, and Network settings should show NAT type Open or Moderate.
+
 ## Data channels
 
 The offer carries audio (Opus, sendrecv: game sound and chat), video (H.264, recvonly) and four data channels:
@@ -145,6 +183,9 @@ it adapts, where a fixed REMB claim does not); `--no-feedback` restores the old 
 
 Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
 
+- **streaming away from home** ("Away from home" above): that the console offers a Teredo candidate, which of its
+  two IPv4 readings answers, whether a phone hotspot (carrier NAT) connects, and whether the console takes our
+  relayed candidate through Cloudflare's TURN;
 - the gamepad entry's physicality fields (sent as 0) and the report's exact size;
 - the `/streaming/properties/titleinfo` message's content: `TitleInfo` reads a `titleId` field of it in any letter case,
   as a string or a number, whether the content is JSON text or an object; the field's real name and form are not seen
