@@ -21,9 +21,10 @@
     release also carries FFmpeg's licence (COPYING.LGPLv2.1) and its build note (FFMPEG-BUILD.txt) beside the Linux
     file, for the LGPL (docs/architecture/steamos.md has the notice).
 
-    -Release also stamps the version (year.month.day.hourminute), builds both systems, and publishes them as one public
-    GitHub release of Nightcast's release repository (each file and its SHA-256) through the GitHub CLI, which the app
-    updates from (each system takes its own file). The source is never pushed.
+    -Release also stamps the version (year.month.day.hourminute), builds both systems, and publishes them as one
+    GitHub release of Nightcast's release repository (each file and its SHA-256) through the GitHub CLI. The
+    repository is private since 2026-11-26 and the app no longer updates itself: a build is copied to its device by
+    hand. The source is never pushed.
 
 .PARAMETER Output
     The folder to publish into; artifacts/publish/desktop (Windows) or artifacts/publish/desktop-linux-x64 (Linux) in
@@ -200,7 +201,7 @@ if (-not $Release) {
 $windows = Publish-Build 'win-x64' $Output
 $linux = Publish-Build 'linux-x64' ($Output.TrimEnd('\', '/') + $linuxSuffix)
 $tag = "v$version"
-$notes = "Nightcast $version. Windows: download $($names['win-x64']) and run it. SteamOS and Linux: download $($names['linux-x64']), make it executable and add it to Steam. Each updates itself from here. The Linux build uses FFmpeg's libavcodec and libavutil (LGPL v2.1 or later, https://ffmpeg.org): see COPYING.LGPLv2.1 and FFMPEG-BUILD.txt."
+$notes = "Nightcast $version. Windows: download $($names['win-x64']) and run it. SteamOS and Linux: download $($names['linux-x64']), make it executable and add it to Steam. Copy each new build over the old one. The Linux build uses FFmpeg's libavcodec and libavutil (LGPL v2.1 or later, https://ffmpeg.org): see COPYING.LGPLv2.1 and FFMPEG-BUILD.txt."
 $notices = $ffmpegNotices | ForEach-Object { Join-Path $ffmpeg $_ }
 gh release create $tag $windows "$windows.sha256" $linux "$linux.sha256" @notices --repo $repository --title "Nightcast $version" --notes $notes
 
