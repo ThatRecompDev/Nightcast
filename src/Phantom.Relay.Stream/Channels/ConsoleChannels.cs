@@ -35,6 +35,7 @@ public sealed class ConsoleChannels
     private readonly PadMailbox _pads;
     private readonly RumbleMailbox _rumble;
     private readonly IRandomSource _random;
+    private readonly PadAnnouncement _firstPad;
     private readonly byte[] _record;
     private readonly byte[] _report = new byte[InputReportWriter.GamepadReportSize];
     private readonly bool[] _announced = new bool[PadMailbox.MaxPads];
@@ -54,6 +55,7 @@ public sealed class ConsoleChannels
         _pads = pads;
         _rumble = rumble;
         _random = random;
+        _firstPad = new PadAnnouncement(clock);
 
         // SCTP over the session, the channels on it, the input reports and the room for one record.
         _association = new SctpAssociation(new DtlsSctpOutput(dtls), clock, random, SctpOptions.Default);
@@ -143,6 +145,7 @@ public sealed class ConsoleChannels
         RequestChannels();
         GreetOpened();
         Answer();
+        AnnounceFirstPad();
         SendPads();
     }
 
@@ -182,15 +185,16 @@ public sealed class ConsoleChannels
         }
     }
 
-    /// <summary>What each channel's opening needs: the control authorization, the message handshake, the input metadata.</summary>
+    /// <summary>
+    /// What each channel's opening needs: the control authorization, the message handshake, the input metadata. The
+    /// first pad waits for the session to be fully up (<see cref="PadAnnouncement"/>).
+    /// </summary>
     private void Greet(DataChannel channel)
     {
         switch (channel.Label)
         {
             case XHomeChannels.ControlLabel:
                 SendText(channel, ControlMessages.Authorization());
-                SendText(channel, ControlMessages.GamepadChanged(0, true));
-                _announced[0] = true;
 
                 return;
             case XHomeChannels.MessageLabel:
@@ -223,6 +227,12 @@ public sealed class ConsoleChannels
                 continue;
             }
 
+            // The console's answer to the first pad: it took it.
+            if (!isString && channel.Label == XHomeChannels.InputLabel && ServerMetadataReport.Is(payload))
+            {
+                _firstPad.Answered();
+            }
+
             string text = Encoding.UTF8.GetString(payload);
             Note(channel.Label, isString, text);
             _hub.Release();
@@ -237,23 +247,62 @@ public sealed class ConsoleChannels
     private void AnswerMessage(DataChannel channel, string text)
     {
         TitleId = TitleInfo.Read(text) ?? TitleId;
+
+        if (MessageChannel.IsTransactionComplete(text))
+        {
+            _firstPad.Unconstrained();
+        }
+
         var client = new ClientDescription(DisplayWidth, DisplayHeight, MessageIds.Next(_random), MessageIds.Next(_random, ClientDescription.MessageCount));
 
-        foreach (string reply in MessageChannel.Answer(text, client))
+        var replies = MessageChannel.Answer(text, client);
+
+        if (replies.Count > 0)
+        {
+            _firstPad.Described();
+        }
+
+        foreach (string reply in replies)
         {
             SendText(channel, reply);
         }
     }
 
+    /// <summary>The first pad, announced (or announced again) when <see cref="PadAnnouncement"/> says so.</summary>
+    private void AnnounceFirstPad()
+    {
+        var control = _control;
+
+        if (control is null || control.State != DataChannelState.Open)
+        {
+            return;
+        }
+
+        var step = _firstPad.Next();
+
+        if (step == PadStep.None)
+        {
+            return;
+        }
+
+        if (step == PadStep.Reannounce)
+        {
+            SendText(control, ControlMessages.GamepadChanged(0, false));
+        }
+
+        SendText(control, ControlMessages.GamepadChanged(0, true));
+        _announced[0] = true;
+    }
+
     /// <summary>
-    /// Every pad state waiting goes out at once, once the input channel is open; a state the association cannot take
-    /// now goes back to wait for the next turn, unless a newer one came.
+    /// Every pad state waiting goes out at once, once the input channel is open and the first pad was announced; a
+    /// state the association cannot take now goes back to wait for the next turn, unless a newer one came.
     /// </summary>
     private void SendPads()
     {
         var input = _input;
 
-        if (input is null || input.State != DataChannelState.Open)
+        if (input is null || input.State != DataChannelState.Open || !_firstPad.ReportsMayFlow)
         {
             return;
         }
