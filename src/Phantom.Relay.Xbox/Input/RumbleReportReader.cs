@@ -8,21 +8,24 @@ namespace Phantom.Relay.Xbox.Input;
 /// <summary>
 /// Reads the console's vibration reports from the input channel (docs/architecture/xhome.md#input-reports):
 /// <code>
-/// u8 kind (128) | u8 rumble type | u8 pad | u8 low % | u8 high % | u8 left trigger % | u8 right trigger %
-/// | u16 duration ms | u16 delay ms | u8 repeat                                                  12 bytes
+/// u16 kind (128) | u8 rumble type (0, four motors) | u8 pad | u8 low % | u8 high % | u8 left trigger %
+/// | u8 right trigger % | u16 duration ms | u16 delay ms | u8 repeat                             13 bytes
 /// </code>
-/// The layout was read from the web player and is not yet confirmed against a console.
+/// From input protocol 8 the kind is two bytes, as in the client's reports, and the console's reports carry no
+/// sequence or time (seen live 2026-11-26).
 /// </summary>
 public static class RumbleReportReader
 {
-    public const int ReportSize = 12;
+    public const int ReportSize = 13;
 
-    private const int PadOffset = 2;
-    private const int LowOffset = 3;
-    private const int HighOffset = 4;
-    private const int LeftTriggerOffset = 5;
-    private const int RightTriggerOffset = 6;
-    private const int DurationOffset = 7;
+    private const int TypeOffset = 2;
+    private const int PadOffset = 3;
+    private const int LowOffset = 4;
+    private const int HighOffset = 5;
+    private const int LeftTriggerOffset = 6;
+    private const int RightTriggerOffset = 7;
+    private const int DurationOffset = 8;
+    private const byte FourMotors = 0;
     private const float PercentScale = 100f;
 
     [HotPath]
@@ -30,7 +33,9 @@ public static class RumbleReportReader
     {
         report = default;
 
-        if (data.Length < ReportSize || data[0] != (byte)InputReportKind.Vibration)
+        if (data.Length < ReportSize
+            || BinaryPrimitives.ReadUInt16LittleEndian(data) != (ushort)InputReportKind.Vibration
+            || data[TypeOffset] != FourMotors)
         {
             return false;
         }

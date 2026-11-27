@@ -72,7 +72,8 @@ public sealed class InputReportTests
     [Fact]
     public void A_vibration_report_is_read_as_motor_strengths_and_a_duration()
     {
-        byte[] data = [128, 0, 1, 50, 100, 0, 25, 0xF4, 0x01, 0, 0, 0];
+        // u16 kind 128, type 0 (four motors), pad 1, low 50 %, high 100 %, triggers 0 and 25 %, 500 ms, no delay or repeat.
+        byte[] data = [128, 0, 0, 1, 50, 100, 0, 25, 0xF4, 0x01, 0, 0, 0];
 
         bool read = RumbleReportReader.TryRead(data, out var report);
 
@@ -87,7 +88,17 @@ public sealed class InputReportTests
     [Fact]
     public void Other_reports_and_short_ones_are_not_vibration()
     {
-        Assert.False(RumbleReportReader.TryRead([2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], out _));
-        Assert.False(RumbleReportReader.TryRead([128, 0, 0], out _));
+        Assert.False(RumbleReportReader.TryRead([2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], out _));
+        Assert.False(RumbleReportReader.TryRead([128, 0, 0, 1, 50, 100, 0, 25, 0xF4, 0x01, 0, 0], out _));
+        Assert.False(RumbleReportReader.TryRead([128, 0, 3, 1, 50, 100, 0, 25, 0xF4, 0x01, 0, 0, 0], out _));
+    }
+
+    [Fact]
+    public void Server_metadata_is_told_by_its_two_byte_kind()
+    {
+        Assert.True(ServerMetadataReport.Is([16, 0, 1, 0, 0, 0]));
+        Assert.False(ServerMetadataReport.Is([16]));
+        Assert.False(ServerMetadataReport.Is([128, 0, 0]));
+        Assert.False(ServerMetadataReport.Is([16, 1]));
     }
 }
