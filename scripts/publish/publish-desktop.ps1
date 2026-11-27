@@ -22,9 +22,8 @@
     file, for the LGPL (docs/architecture/steamos.md has the notice).
 
     -Release also stamps the version (year.month.day.hourminute), builds both systems, and publishes them as one
-    GitHub release of Nightcast's release repository (each file and its SHA-256) through the GitHub CLI. The
-    repository is private since 2026-11-26 and the app no longer updates itself: a build is copied to its device by
-    hand. The source is never pushed.
+    GitHub release of Nightcast's public repository (each file and its SHA-256) through the GitHub CLI; every released
+    build finds it there at its next start and updates itself.
 
 .PARAMETER Output
     The folder to publish into; artifacts/publish/desktop (Windows) or artifacts/publish/desktop-linux-x64 (Linux) in

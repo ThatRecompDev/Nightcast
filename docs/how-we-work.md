@@ -18,13 +18,14 @@ Never in this repository: account tokens or refresh tokens, captures of a real s
 ids, gamertags, user hashes, e-mail addresses, absolute paths, or anything a Microsoft service sent that identifies an
 account. Tests build their payloads by hand from the shapes in the guides.
 
-## 1a. Private builds, private source
+## 1a. Public builds, public source
 
-The owner's decision of 2026-11-23, changed on 2026-11-26: the desktop app is released as **Nightcast**, as built
-exes on a GitHub repository that holds only a README and its releases (`scripts/publish/publish-desktop.ps1
--Release`). Since 2026-11-26 that repository is private, for the owner alone, and a build no longer updates itself:
-each build is copied to its device by hand. Since 2026-11-26 the source is pushed to that same private repository
-(`origin`), only when the owner asks; nothing else of it goes anywhere. A release carries nothing of the owner's: no token, credential, console id,
+The owner's decision of 2026-11-23, changed on 2026-11-26 and again on 2026-11-27: the desktop app is released as
+**Nightcast**, as built exes on the public GitHub repository ThatRecompDev/Nightcast (`scripts/publish/publish-desktop.ps1
+-Release`), and a released build updates itself from its latest release at start (`--no-update` skips that). The
+repository also holds the source (`origin`), pushed only when the owner asks, and the pinned engine packages in
+`vendor/nuget`; it was private from 2026-11-26 to 2026-11-27, when its whole history was checked for anything of the
+owner's before it was made public again. A release carries nothing of the owner's: no token, credential, console id,
 gamertag, e-mail, user name or path of the owner's machines (the build maps its paths away, and the binaries are
 scanned before upload). Third-party software the app can use at run time (Lossless Scaling's frame generation and
 upscalers, NVIDIA's Optical Flow SDK for FRUC) is never in the repository or a release: each user's own install is

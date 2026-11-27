@@ -59,9 +59,8 @@ namespace Phantom.Relay.Desktop;
 /// bitrate feedback switches (<see cref="BitrateFeedbackArguments"/>: <c>--bandwidth-line</c>, <c>--remb</c>,
 /// <c>--twcc</c>) choose the feedback; without them it is <see cref="BitrateFeedback.Recommended"/>, and
 /// <c>--no-feedback</c> turns it off. On Windows the stream starts fullscreen (borderless,
-/// <see cref="BorderlessFullscreen"/>); <c>--windowed</c> starts it as a window. A build no longer updates itself: Nightcast's
-/// release repository is private, and each build is copied to its device by hand (<c>--no-update</c> is still accepted
-/// and does nothing).
+/// <see cref="BorderlessFullscreen"/>); <c>--windowed</c> starts it as a window. At start, before the window, a released build updates
+/// itself from Nightcast's public releases (<see cref="SelfUpdater"/>); <c>--no-update</c> skips that.
 /// <c>--external-frame-generation</c> presents only the game's new pictures from the start, for another external frame
 /// generator (F12 or the menu switch it live; <see cref="StreamApplication.PresentNewPicturesOnly"/>). On Linux frame
 /// generation is lsfg-vk, run inside Nightcast's own process (<see cref="LsfgVkFrameGeneration"/>): loaded before the
@@ -76,6 +75,7 @@ public static class DesktopProgram
     public const int Refused = 3;
 
     private const string SignOutArgument = "--sign-out";
+    private const string NoUpdateArgument = "--no-update";
     private const string NoFeedbackArgument = "--no-feedback";
     private const string WindowedArgument = "--windowed";
     private const string HomeVariable = "HOME";
@@ -142,8 +142,14 @@ public static class DesktopProgram
             cancellation.Cancel();
         };
 
-        // No update check: the release repository is private since 2026-11-26 (the owner's call), so a build is copied
-        // to each device by hand. SelfUpdater stays for the day it is turned back on.
+        // Before anything else: a newer release replaces this build and starts in its place.
+        var running = typeof(DesktopProgram).Assembly.GetName().Version;
+
+        if (!args.Contains(NoUpdateArgument) && await SelfUpdater.TryUpdateAsync(Environment.ProcessPath, running, args, Console.Out, cancellation.Token))
+        {
+            return new RunOutcome(Succeeded, false);
+        }
+
         var clock = TimeProvider.System;
         var store = UserStorage.Open(PersistentArea.ForApp(RelayApp.Id));
         using var client = new HttpClient();
