@@ -89,16 +89,34 @@ The offer carries audio (Opus, sendrecv: game sound and chat), video (H.264, rec
 | Label | Subprotocol | Use |
 |---|---|---|
 | `input` | `1.0` | binary reports (below), ordered |
-| `control` | `controlV1` | JSON: on open the authorization request (a fixed access key, part of the protocol) and pad 0 added; key-picture requests |
-| `message` | `messageV1` | JSON: the handshake; after its acknowledgement the client's description (system UI, install id, orientation, touch, capabilities, size); every `TransactionStart` is answered with `TransactionComplete` |
+| `control` | `controlV1` | JSON: on open the authorization request (a fixed access key, part of the protocol); pad 0 added once the session is up (below); key-picture requests |
+| `message` | `messageV1` | JSON: the handshake; after its acknowledgement the client's description (system UI, install id, orientation, touch, capabilities, size) and the un-constrain transaction; every `TransactionStart` is answered with `TransactionComplete` |
 | `chat` | `chatV1` | party chat, not used yet |
+
+## The first pad
+
+Seen live on a Series X on 2026-11-26, from a browser client built on the same protocol:
+
+- **Un-constrain.** After the description the client starts a transaction on the message channel, target
+  `/streaming/title/constrain`, content `{"constrain":false}`; the web player sends it right after connecting. Without
+  it the console keeps the running game constrained and drops every input report. The console answers with
+  `TransactionComplete`.
+- **Order.** The console binds the pad at its first report, and a report that comes while the game is still
+  constrained leaves the pad dead for the session. Pad 0 announced on the control channel together with the
+  authorization raced the console's setup of the input channel (SCTP keeps no order between streams) and left input
+  dead about half the time. So pad 0 is announced only after the un-constrain's completion (or 3 s after the
+  description at worst), and no report goes out before it (`PadAnnouncement`).
+- **Answer.** The console answers a pad it took with server metadata on the input channel (`u16 kind` 16). Without
+  that answer within 1.5 s the pad is removed and announced again, at most four times.
 
 ## Input reports
 
 Little-endian. Header: `u16 kind`, `u32 sequence`, `f64 milliseconds` (14 bytes). Client metadata adds `u8` most
 touch points. A gamepad report adds `u8 count` and per pad `u8 index`, `u16 buttons`, `i16` LX LY RX RY (+Y up),
-`u16` LT RT, `u32` physical and virtual physicality (23 bytes). The console's vibration report: `u8 kind (128)`,
-`u8 type`, `u8 pad`, four `u8` motor percentages, `u16 duration`, `u16 delay`, `u8 repeat`.
+`u16` LT RT, `u32` physical and virtual physicality (23 bytes). The console's reports carry no sequence or time: its
+vibration report (13 bytes, seen live 2026-11-26) is `u16 kind (128)`, `u8 type` (0, four motors), `u8 pad`, four
+`u8` motor percentages (low, high, left trigger, right trigger), `u16 duration`, `u16 delay`, `u8 repeat`; its server
+metadata starts with `u16 kind (16)`.
 
 ## Bitrate feedback
 
@@ -192,7 +210,6 @@ Each needs a live check (`[Trait("Category", "Live")]`) before it is trusted:
   yet;
 - whether a pad other than pad 0 needs its own `gamepadChanged` on the control channel before its first report (the
   stream sends one);
-- the vibration report's layout;
 - the client description messages after the handshake, and whether the console needs all of them;
 - whether the engine's H.264 decoder (openh264) takes the console's Main-profile stream at 1440p60 as fast as the
   latency budget needs; Constrained Baseline is the fallback the console also offers;
