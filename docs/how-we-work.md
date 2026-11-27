@@ -11,6 +11,7 @@ outranks every other document, habit and default. This page adds only what is sp
 | `src/Phantom.Relay.*` | the projects of the layers in [the overview](architecture/overview.md) |
 | `tests` | the tests of each project and the architecture rules (`Phantom.Relay.Architecture.Tests`) |
 | `scripts/test` | `test-fast.ps1`, the per-commit check |
+| `vendor/nuget` | the Phantom.Engine packages Relay builds on, at the pinned version, so a clone restores alone |
 | `docs` | this page and the architecture guides |
 
 Never in this repository: account tokens or refresh tokens, captures of a real streaming session, console or server
@@ -34,7 +35,10 @@ and says it is unofficial.
 
 Relay is an engine app, the way a game is. Before writing anything, search the engine. What any app could use goes
 into the engine, through the engine coordinator, as an engine lane with its own prerelease version; Relay pins that
-version in `Directory.Packages.props` in a commit of its own. What stays here is only what is the console's:
+version in `Directory.Packages.props` in a commit of its own, with `scripts/build/vendor-engine.ps1` run in the same
+commit: it copies exactly the packages that version needs from the engine's feed into `vendor/nuget`, where
+`nuget.config` restores them from, so a clone builds without the engine's checkout. What stays here is only what is
+the console's:
 
 - the account sign-in chain and the streaming service's REST calls ([xhome](architecture/xhome.md));
 - the console's data-channel messages (control, message, input reports) and their byte layouts;
