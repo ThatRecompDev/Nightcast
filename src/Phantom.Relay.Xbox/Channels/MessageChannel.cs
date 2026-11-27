@@ -22,7 +22,8 @@ public static class MessageChannel
 
     /// <summary>
     /// The replies to one message from the console: the client's description after the handshake's acknowledgement,
-    /// a completion for a transaction start, nothing for anything else (unknown messages are ignored).
+    /// followed by the un-constrain transaction; a completion for a transaction start; nothing for anything else
+    /// (unknown messages are ignored).
     /// </summary>
     public static IReadOnlyList<string> Answer(string received, ClientDescription client)
     {
@@ -53,6 +54,22 @@ public static class MessageChannel
         }
 
         return [];
+    }
+
+    /// <summary>
+    /// Whether a message from the console completes a transaction the client started: the only one is the
+    /// un-constrain, so its completion means the game now takes input.
+    /// </summary>
+    public static bool IsTransactionComplete(string received)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(received, RelayJsonContext.Default.MessageEnvelope)?.Type == XHomeChannels.TransactionCompleteType;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     private static string[] Describe(ClientDescription client)
@@ -89,12 +106,16 @@ public static class MessageChannel
             JsonSerializer.Serialize(dimensions, RelayJsonContext.Default.DimensionsChanged),
         ];
 
-        var messages = new string[targets.Length];
+        var messages = new string[targets.Length + 1];
 
         for (int i = 0; i < targets.Length; i++)
         {
             messages[i] = Message(targets[i], client.Ids[i], contents[i]);
         }
+
+        // Last, as the web player sends it: the game may take input. The console answers with TransactionComplete.
+        string constrain = JsonSerializer.Serialize(new TitleConstrain(Constrain: false), RelayJsonContext.Default.TitleConstrain);
+        messages[targets.Length] = Start(XHomeChannels.ConstrainTarget, client.Ids[targets.Length], constrain);
 
         return messages;
     }
@@ -102,6 +123,13 @@ public static class MessageChannel
     private static string Complete(string id)
     {
         var message = new MessageEnvelope(XHomeChannels.TransactionCompleteType, string.Empty, id, null, string.Empty);
+
+        return JsonSerializer.Serialize(message, RelayJsonContext.Default.MessageEnvelope);
+    }
+
+    private static string Start(string target, string id, string content)
+    {
+        var message = new MessageEnvelope(XHomeChannels.TransactionStartType, content, id, target, string.Empty);
 
         return JsonSerializer.Serialize(message, RelayJsonContext.Default.MessageEnvelope);
     }

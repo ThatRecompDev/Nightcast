@@ -38,6 +38,7 @@ namespace Phantom.Relay.Xbox.Json;
 [JsonSerializable(typeof(ClientInstallChanged))]
 [JsonSerializable(typeof(OrientationChanged))]
 [JsonSerializable(typeof(TouchInputChanged))]
+[JsonSerializable(typeof(TitleConstrain))]
 [JsonSerializable(typeof(DeviceCapabilities))]
 [JsonSerializable(typeof(DimensionsChanged))]
 public sealed partial class RelayJsonContext : JsonSerializerContext

@@ -57,6 +57,12 @@ public static class XHomeChannels
 
     public const string DimensionsTarget = "/streaming/characteristics/dimensionschanged";
 
+    /// <summary>
+    /// The transaction that lets the running game take input: without it the console keeps the game "constrained" and
+    /// drops every input report (the web player sends it after the description; seen live 2026-11-26).
+    /// </summary>
+    public const string ConstrainTarget = "/streaming/title/constrain";
+
     /// <summary>The console's message naming the running game (seen live; its content's shape is not seen yet).</summary>
     public const string TitleInfoTarget = "/streaming/properties/titleinfo";
 

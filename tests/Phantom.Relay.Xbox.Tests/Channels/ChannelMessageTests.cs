@@ -24,7 +24,7 @@ public sealed class ChannelMessageTests
     [Fact]
     public void The_handshake_acknowledgement_is_answered_with_the_clients_description()
     {
-        var client = new ClientDescription(1920, 1080, "install", ["a", "b", "c", "d", "e", "f"]);
+        var client = new ClientDescription(1920, 1080, "install", ["a", "b", "c", "d", "e", "f", "g"]);
 
         var replies = MessageChannel.Answer("""{"type":"HandshakeAck","id":"x","cv":"0"}""", client);
 
@@ -35,9 +35,29 @@ public sealed class ChannelMessageTests
     }
 
     [Fact]
+    public void The_description_ends_by_letting_the_game_take_input()
+    {
+        var client = new ClientDescription(1920, 1080, "install", ["a", "b", "c", "d", "e", "f", "g"]);
+
+        var replies = MessageChannel.Answer("""{"type":"HandshakeAck","id":"x","cv":"0"}""", client);
+
+        Assert.Equal(
+            """{"type":"TransactionStart","content":"{\u0022constrain\u0022:false}","id":"g","target":"/streaming/title/constrain","cv":""}""",
+            replies[^1]);
+    }
+
+    [Fact]
+    public void Only_a_transaction_completion_completes_a_transaction()
+    {
+        Assert.True(MessageChannel.IsTransactionComplete("""{"type":"TransactionComplete","id":"g","cv":""}"""));
+        Assert.False(MessageChannel.IsTransactionComplete("""{"type":"TransactionStart","id":"t","cv":""}"""));
+        Assert.False(MessageChannel.IsTransactionComplete("not json"));
+    }
+
+    [Fact]
     public void A_transaction_is_completed_and_anything_else_is_ignored()
     {
-        var client = new ClientDescription(1280, 720, "install", ["a", "b", "c", "d", "e", "f"]);
+        var client = new ClientDescription(1280, 720, "install", ["a", "b", "c", "d", "e", "f", "g"]);
 
         var completion = MessageChannel.Answer("""{"type":"TransactionStart","id":"t7","target":"/x","content":"{}"}""", client);
         var other = MessageChannel.Answer("""{"type":"Message","id":"m1","target":"/y","content":"{}"}""", client);

@@ -4,10 +4,10 @@ namespace Phantom.Relay.Xbox.Channels;
 
 /// <summary>
 /// What the client tells the console about itself after the handshake: the stream's shown size, its installation id
-/// and one fresh message id per description message (<see cref="MessageCount"/>, drawn by the caller from its random
-/// source).
+/// and one fresh message id per description message and for the un-constrain transaction after them
+/// (<see cref="MessageCount"/>, drawn by the caller from its random source).
 /// </summary>
 public sealed record ClientDescription(int Width, int Height, string InstallId, IReadOnlyList<string> Ids)
 {
-    public const int MessageCount = 6;
+    public const int MessageCount = 7;
 }
